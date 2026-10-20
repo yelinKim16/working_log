@@ -37,7 +37,7 @@
   const weekMonthKey = (ws) => fmt(thursdayOf(ws)).slice(0, 7);
 
   // 동기화 대상 내용 (보기 설정 등 PC별 설정은 제외)
-  const contentOf = (d) => ({ unit: d.unit, user: d.user, projects: d.projects, days: d.days, tasks: d.tasks });
+  const contentOf = (d) => ({ unit: d.unit, user: d.user, projects: d.projects, days: d.days, tasks: d.tasks, memos: d.memos || [] });
   const hashOf = (obj) => { const s = JSON.stringify(obj); let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return String(h >>> 0); };
 
   // ───────── 데이터 ─────────
@@ -144,6 +144,12 @@
     d.tasks = arr(d.tasks).filter((t) => isDate(t.date));
     d.projects.forEach((p) => { if (!p.color || p.color === '#16182b') p.color = COLORS[0]; });
     d.days.forEach((x) => { x.tabs = arr(x.tabs); });
+    // 주간 메모: { id, date(주), projectId, text, createdAt }
+    d.memos = arr(d.memos).filter((m) => isDate(m.date));
+    d.memos.forEach((m) => {
+      m.text = m.text || ''; m.projectId = m.projectId || '';
+      if (!d.days.some((x) => x.date === m.date)) d.days.push({ date: m.date, tabs: [] });
+    });
     d.tasks.forEach((t) => {
       t.priority = PRI[t.priority] ? t.priority : 'normal';
       t.notes = t.notes || ''; t.due = t.due || '';
@@ -158,7 +164,7 @@
   }
 
   let state = load();
-  const tmp = { filter: 'all', editingNotes: null, expandedNotes: new Set(), flash: null, activeTab: {} };
+  const tmp = { filter: 'all', editingNotes: null, expandedNotes: new Set(), flash: null, activeTab: {}, projTab: 'task', focusMemo: null };
 
   // 이 PC(브라우저)에 캐시로 저장 — 드라이브 연결이 끊겨도 작업은 유지됨
   function saveLocal() {
@@ -180,6 +186,19 @@
   const tabTasks = (tabId) => state.tasks.filter((t) => t.tabId === tabId);
   const dayTasks = (date) => state.tasks.filter((t) => t.date === date);
   const projTasks = (pid) => state.tasks.filter((t) => t.projectId === pid);
+  const weekMemos = (date) => state.memos.filter((m) => m.date === date);
+  const projMemos = (pid) => state.memos.filter((m) => m.projectId === pid);
+  const findMemo = (id) => state.memos.find((m) => m.id === id);
+  const memoTitle = (m) => m.text.split('\n')[0].trim() || '(제목 없음)';
+  function newMemo(date, projectId) {
+    ensureDay(date);
+    const m = { id: uid(), date, projectId: projectId || '', text: '', createdAt: Date.now() };
+    state.memos.unshift(m); // 새 메모는 맨 위에
+    tmp.focusMemo = m.id;
+    return m;
+  }
+  const defaultMemoProject = (date) => (tmp.lastMemoProject && getProject(tmp.lastMemoProject) ? tmp.lastMemoProject
+    : weekMemos(date).find((m) => m.projectId)?.projectId || getDay(date)?.tabs[0]?.projectId || '');
   const isOverdue = (t) => !t.done && !t.carriedTo && t.due && t.due < today();
 
   function findTab(tabId) {
@@ -285,6 +304,7 @@
       <div class="side-scroll">
         <div class="nav-item ${v.type === 'home' ? 'active' : ''}" data-action="go" data-view="home">🏠 홈</div>
         <div class="nav-item ${v.type === 'calendar' ? 'active' : ''}" data-action="go" data-view="calendar">📅 캘린더</div>
+        <div class="nav-item ${v.type === 'day' && v.date === thisWeek() && tmp.activeTab[v.date] === MEMO ? 'active' : ''}" data-action="go-memo">📝 메모장</div>
         <div class="side-sep"></div>
         <div class="side-label"><span>🗓 주간별</span><button class="icon-btn add" data-action="new-day" title="주 추가">+</button></div>
         ${days}
@@ -319,6 +339,12 @@
     else if (v.type === 'calendar') main.innerHTML = calendarView();
     else main.innerHTML = homeView();
 
+    main.querySelectorAll('textarea[data-memo]').forEach(autoGrowMemo);
+    if (tmp.focusMemo) {
+      const ta = main.querySelector(`textarea[data-memo="${tmp.focusMemo}"]`);
+      if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+      tmp.focusMemo = null;
+    }
     if (tmp.editingNotes) {
       const ta = $('.notes-edit textarea', main);
       if (ta) { autoGrow(ta); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
@@ -331,12 +357,7 @@
   }
 
   // ── 공통 조각 ──
-  function badgesOf(s) {
-    return PRI_ORDER.map((p) => {
-      const left = s.by[p].total - s.by[p].done;
-      return left ? `<span class="badge" style="color:${PRI[p].color};background:${PRI[p].bg}">${PRI[p].label} ${left}</span>` : '';
-    }).join('');
-  }
+  const badgesOf = () => ''; // 우선순위 표시는 쓰지 않음
   function headBlock({ dot, title, titleAction, extra = '', s, menu }) {
     return `<div class="list-head">
       <div class="list-title">${dot ? `<span class="dot" style="background:${dot}"></span>` : ''}
@@ -350,63 +371,28 @@
       </div>
     </div>`;
   }
-  function summaryBlock(s) {
-    if (state.ui.summaryHidden) {
-      return `<div class="summary" style="padding-top:10px;padding-bottom:10px"><div class="summary-top"><span class="label">요약</span><button class="link-btn" data-action="toggle-summary">펼치기 ▼</button></div></div>`;
-    }
-    const R = 42, C = 2 * Math.PI * R;
-    return `<div class="summary">
-      <div class="summary-top"><span class="label">요약</span><button class="link-btn" data-action="toggle-summary">숨기기 ▲</button></div>
-      <div class="summary-body">
-        <div class="donut">
-          <svg width="100" height="100" viewBox="0 0 100 100">
-            <circle cx="50" cy="50" r="${R}" fill="none" stroke="var(--track)" stroke-width="7"/>
-            <circle cx="50" cy="50" r="${R}" fill="none" stroke="var(--green)" stroke-width="7" stroke-linecap="round"
-              stroke-dasharray="${(C * s.pct) / 100} ${C}" transform="rotate(-90 50 50)"/>
-          </svg>
-          <div class="pct">${s.pct}%</div>
-          <div class="frac">${s.done} / ${s.total}</div>
-        </div>
-        <div class="pri-rows">
-          ${PRI_ORDER.map((p) => {
-            const b = s.by[p], pct = b.total ? Math.round((b.done / b.total) * 100) : 0;
-            return `<div class="pri-row">
-              <span class="name" style="color:${PRI[p].color}">${PRI[p].label}</span>
-              <div class="bar"><span style="width:${pct}%;background:${PRI[p].color}"></span></div>
-              <span class="n">${b.done}/${b.total}</span><span class="p">${pct}%</span>
-            </div>`;
-          }).join('')}
-        </div>
-      </div>
-    </div>`;
-  }
+  const summaryBlock = () => ''; // 진행률은 맨 위 바 하나만
   function toolbar() {
-    const filters = [['all', '전체'], ...PRI_ORDER.map((p) => [p, PRI[p].label]), ['open', '미완료']];
+    const filters = [['all', '전체'], ['open', '미완료']];
     return `<div class="toolbar">
       ${filters.map(([k, label]) => `<button class="chip ${tmp.filter === k ? 'on' : ''}" data-action="filter" data-f="${k}">${label}</button>`).join('')}
       <span class="grow"></span>
       <button class="btn" data-action="excel">엑셀 다운로드</button>
-      <button class="btn ${state.ui.sortPriority ? 'on' : ''}" data-action="sort">우선순위${state.ui.sortPriority ? ' ✓' : ''}</button>
       <button class="btn" data-action="share">공유</button>
       <button class="btn primary" data-action="add-task">+ Task 추가</button>
     </div>`;
   }
   function filterSort(tasks) {
     const list = tasks.filter((t) =>
-      tmp.filter === 'all' ? true : tmp.filter === 'open' ? !t.done && !t.carriedTo : t.priority === tmp.filter);
+      tmp.filter === 'open' ? !t.done && !t.carriedTo : true);
     const idx = new Map(state.tasks.map((t, i) => [t.id, i]));
     const rank = (t) => (t.done ? 2 : t.carriedTo ? 1 : 0);
     return list.sort((a, b) => {
       if (rank(a) !== rank(b)) return rank(a) - rank(b);
-      if (state.ui.sortPriority) {
-        const d = PRI_ORDER.indexOf(a.priority) - PRI_ORDER.indexOf(b.priority);
-        if (d) return d;
-        if ((a.due || '9') !== (b.due || '9')) return (a.due || '9') < (b.due || '9') ? -1 : 1;
-      }
       return idx.get(a.id) - idx.get(b.id);
     });
   }
-  const priTag = (t) => `<span class="tag" style="color:${PRI[t.priority].color};background:${PRI[t.priority].bg}">${PRI[t.priority].label}</span>`;
+  const priTag = () => '';
   const dueTag = (t) => (t.due ? `<span class="tag date ${isOverdue(t) ? 'overdue' : t.done ? '' : 'plain'}">${isOverdue(t) ? '⚠ ' : ''}마감 ${short(t.due)}</span>` : '');
 
   function renderNotes(text) {
@@ -451,13 +437,47 @@
       </div>
     </div>`;
   }
+  function memoProjectSelect(m) {
+    return `<label class="proj-sel" style="--pc:${projColor(m.projectId)}" title="프로젝트 선택">
+      <i></i>
+      <select data-mproj="${m.id}">
+        <option value="" ${m.projectId ? '' : 'selected'}>프로젝트 선택</option>
+        ${state.projects.map((p) => `<option value="${p.id}" ${m.projectId === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+        <option value="__new">+ 새 프로젝트…</option>
+      </select>
+    </label>`;
+  }
+  // 메모 한 장 — 첫 줄 프로젝트 선택, 그 아래 줄 노트에 바로 길게 적기 (자동 저장)
+  function memoCard(m) {
+    return `<div class="memo" data-task="${m.id}">
+      <div class="memo-head">
+        ${memoProjectSelect(m)}
+        <span class="memo-date">${stamp(m.createdAt)} 작성</span>
+        <span class="grow"></span>
+        <button class="memo-more" data-action="memo-menu" data-id="${m.id}" title="더보기">⋯</button>
+      </div>
+      <textarea class="memo-text" data-memo="${m.id}" rows="2" spellcheck="false"
+        placeholder="여기에 자유롭게 적어주세요. 첫 줄은 제목처럼 굵게 보여요.">${esc(m.text)}</textarea>
+    </div>`;
+  }
+  function memoBody(date) {
+    const memos = weekMemos(date);
+    return `<div class="toolbar">
+        <span class="memo-hint">📝 이번 주 메모 — 완료 표시 없이 자유롭게 적어두는 곳이에요.</span><span class="grow"></span>
+        <button class="btn primary" data-action="add-memo" data-date="${date}">+ 새 메모</button>
+      </div>
+      <div class="sheet">${memos.length ? memos.map(memoCard).join('')
+        : emptyBox(`이 주의 메모가 아직 없어요.<br><br><button class="btn primary" data-action="add-memo" data-date="${date}">+ 새 메모</button>`)}</div>`;
+  }
   const emptyBox = (html) => `<div class="empty"><div class="big">📝</div>${html}</div>`;
 
   // ── 주간 화면 ──
   const ALL = '__all'; // "전체" 탭 — 그 주의 모든 탭 Task를 탭별로 묶어서 보여줌
   // 선택된 탭: 탭 객체, 전체 탭이면 ALL, 탭이 하나도 없으면 null
+  const MEMO = '__memo'; // "메모" 탭
   function activeTabOf(date) {
     const day = getDay(date);
+    if (tmp.activeTab[date] === MEMO) return MEMO;
     if (!day || !day.tabs.length) return null;
     let id = tmp.activeTab[date] ?? ALL;
     if (id !== ALL && !day.tabs.some((t) => t.id === id)) id = ALL;
@@ -487,9 +507,11 @@
     const carry = carryCandidates(date);
     const allTab = day.tabs.length ? `<div class="dtab all ${tab === ALL ? 'on' : ''}" data-action="select-tab" data-date="${date}" data-id="${ALL}">
         <span class="tn">전체</span><span class="tc">${s.done}/${s.total}</span></div>` : '';
-    const tabs = allTab + day.tabs.map((t) => {
+    const memoTab = `<div class="dtab memo-tab ${tab === MEMO ? 'on' : ''}" data-action="select-tab" data-date="${date}" data-id="${MEMO}">
+        <span class="tn">📝 메모</span><span class="tc">${weekMemos(date).length}</span></div>`;
+    const tabs = allTab + memoTab + day.tabs.map((t) => {
       const ts = stats(tabTasks(t.id));
-      return `<div class="dtab ${tab && tab !== ALL && t.id === tab.id ? 'on' : ''}" data-action="select-tab" data-date="${date}" data-id="${t.id}">
+      return `<div class="dtab ${tab && tab !== ALL && tab !== MEMO && t.id === tab.id ? 'on' : ''}" data-action="select-tab" data-date="${date}" data-id="${t.id}">
         <span class="dot" style="background:${projColor(t.projectId)}"></span>
         <span class="tn">${tabName(t)}</span>
         <span class="tc">${ts.done}/${ts.total}</span>
@@ -498,7 +520,9 @@
     }).join('');
 
     let body;
-    if (!tab) {
+    if (tab === MEMO) {
+      body = memoBody(date);
+    } else if (!tab) {
       body = emptyBox(`이 주에 아직 탭이 없어요.<br><b>+ 탭 추가</b>로 프로젝트를 골라 업무를 적어보세요.<br><br>
         <button class="btn primary" data-action="add-tab" data-date="${date}">+ 탭 추가</button>`);
     } else if (tab === ALL) {
@@ -523,8 +547,26 @@
   }
 
   // ── 프로젝트별 화면 ──
+  function projectMemoBody(p) {
+    const memos = projMemos(p.id);
+    const weeks = [...new Set(memos.map((m) => m.date))].sort().reverse();
+    return `<div class="toolbar"><span class="memo-hint">주간 메모에서 이 프로젝트로 고른 메모가 모여요.</span><span class="grow"></span>
+        <button class="btn primary" data-action="add-memo" data-date="${thisWeek()}" data-project="${p.id}">+ 이번 주에 메모</button></div>
+      <div class="sheet">${weeks.map((w) => `<div class="date-group">
+          <div class="dg-head" data-action="open-memo" data-date="${w}" title="이 주의 메모로 이동">
+            <span class="dg-date">🗓 ${weekLabel(w)}</span>${w === thisWeek() ? '<span class="today-pill">이번 주</span>' : ''}
+            <span class="dg-cnt">메모 ${memos.filter((m) => m.date === w).length}개</span><span class="grow"></span><span class="dg-go">주간 메모로 이동 ›</span>
+          </div>
+          ${memos.filter((m) => m.date === w).map(memoCard).join('')}
+        </div>`).join('') || emptyBox('이 프로젝트 메모가 아직 없어요.<br>주간 화면의 <b>📝 메모</b> 탭에서 메모를 쓰고 이 프로젝트를 고르면 여기에 모여요.')}</div>`;
+  }
   function projectView(p) {
     const all = projTasks(p.id), s = stats(all), list = filterSort(all);
+    const isMemo = tmp.projTab === 'memo';
+    const ptabs = `<div class="tabbar">
+      <div class="dtab ${isMemo ? '' : 'on'}" data-action="proj-tab" data-t="task"><span class="tn">할 일</span><span class="tc">${s.done}/${s.total}</span></div>
+      <div class="dtab memo-tab ${isMemo ? 'on' : ''}" data-action="proj-tab" data-t="memo"><span class="tn">📝 메모</span><span class="tc">${projMemos(p.id).length}</span></div>
+    </div>`;
     const dates = [...new Set(list.map((t) => t.date))].sort().reverse();
     const groups = dates.map((d) => {
       const items = list.filter((t) => t.date === d);
@@ -542,9 +584,10 @@
         dot: p.color, title: esc(p.name), titleAction: `data-action="rename-project" data-id="${p.id}" title="클릭하여 이름 변경" class="editable"`, s,
         menu: `<button class="btn sm" data-action="project-menu" data-id="${p.id}">⋯ 프로젝트 메뉴</button>`,
       })}
-      ${summaryBlock(s)}${toolbar()}
+      ${ptabs}
+      ${isMemo ? projectMemoBody(p) : `${toolbar()}
       <div class="tasks">${groups || emptyBox(all.length ? '조건에 맞는 Task가 없습니다.'
-        : '이 프로젝트에 아직 Task가 없어요.<br>주간별 화면에서 이 프로젝트 탭을 추가하거나, 오른쪽 위 <b>+ Task 추가</b>를 눌러보세요.')}</div>`;
+        : '이 프로젝트에 아직 Task가 없어요.<br>주간별 화면에서 이 프로젝트 탭을 추가하거나, 오른쪽 위 <b>+ Task 추가</b>를 눌러보세요.')}</div>`}`;
   }
 
   // ── 홈 ──
@@ -553,7 +596,6 @@
     const ts = stats(dayTasks(td));
     const open = state.tasks.filter((t) => !t.done && !t.carriedTo);
     const overdue = state.tasks.filter(isOverdue);
-    const urgent = open.filter((t) => t.priority === 'urgent' || t.priority === 'high');
     const todayOpen = dayTasks(td).filter((t) => !t.done && !t.carriedTo);
     const mini = (t) => `<div class="mini-task" data-action="goto-task" data-id="${t.id}">
         ${priTag(t)}<span class="t">${esc(t.title)}</span>${dueTag(t)}<span class="from">${esc(projName(t.projectId))} · ${weekName(t.date)}</span></div>`;
@@ -575,7 +617,7 @@
         </div>
         <div class="two-col">
           ${panel('📌 이번 주 할 일', todayOpen, '이번 주 남은 Task가 없어요.')}
-          ${panel('🔥 긴급 · 높음', urgent, '긴급한 Task가 없습니다.')}
+          ${panel('📋 전체 미완료', open, '미완료 Task가 없어요.')}
           ${panel('⚠ 마감 지남', overdue, '마감이 지난 Task가 없습니다.')}
           <div class="panel"><h2>🗓 최근 주간 업무일지<span class="c">${Math.min(state.days.length, 7)}</span></h2>
             ${state.days.slice(0, 7).map((dy) => {
@@ -614,11 +656,11 @@
       const d = new Date(startDay); d.setDate(startDay.getDate() + i);
       if (i === 35 && d.getMonth() !== m - 1) break;
       const ds = fmt(d), ws = weekStart(ds);
-      const evs = state.tasks.filter((t) => t.due === ds).sort((a, b) => (a.done - b.done) || PRI_ORDER.indexOf(a.priority) - PRI_ORDER.indexOf(b.priority));
+      const evs = state.tasks.filter((t) => t.due === ds).sort((a, b) => a.done - b.done);
       cells += `<div class="cal-day ${d.getMonth() !== m - 1 ? 'out' : ''} ${ds === td ? 'today' : ''} ${ws === tw ? 'thisweek' : ''} ${getDay(ws) ? 'has' : ''} ${d.getDay() === 0 ? 'sun' : d.getDay() === 6 ? 'sat' : ''}"
           data-action="open-day" data-date="${ws}" title="${weekLabel(ws)} 업무일지">
         <span class="dn">${d.getDate()}</span>
-        ${evs.slice(0, 3).map((t) => `<div class="cal-ev ${t.done ? 'done' : ''}" style="background:${PRI[t.priority].bg};color:${PRI[t.priority].color}"
+        ${evs.slice(0, 3).map((t) => `<div class="cal-ev ${t.done ? 'done' : ''}" style="background:#fdf4f7;color:var(--text);border-left:3px solid ${projColor(t.projectId)}"
             data-action="goto-task" data-id="${t.id}" title="마감 · ${esc(projName(t.projectId))} · ${esc(t.title)}">${esc(t.title)}</div>`).join('')}
         ${evs.length > 3 ? `<div class="cal-more">+${evs.length - 3}개</div>` : ''}
       </div>`;
@@ -735,9 +777,6 @@
             <span><i style="background:${projColor(tb.projectId)}"></i>${esc(projName(tb.projectId))}${tb.label ? ` · ${esc(tb.label)}` : ''}</span></label>`).join('')}</div>
         </div>` : ''}
         <div class="field"><label>Task</label><input class="input" name="title" value="${esc(t.title)}" placeholder="예) 테스트 207 진행" autofocus autocomplete="off" required></div>
-        <div class="field"><label>우선순위</label>
-          <div class="seg">${PRI_ORDER.map((p) => `<label style="color:${PRI[p].color};--pbg:${PRI[p].bg}"><input type="radio" name="priority" value="${p}" ${t.priority === p ? 'checked' : ''}><span>${PRI[p].label}</span></label>`).join('')}</div>
-        </div>
         <div class="row2">
           ${!task && ctx.askDate ? `<div class="field"><label>주 (날짜를 고르면 그 주로 들어가요)</label><input class="input" type="date" name="date" value="${today()}" required></div>` : ''}
           <div class="field"><label>마감일 (선택)</label><input class="input" type="date" name="due" value="${t.due || ''}"></div>
@@ -756,7 +795,7 @@
     form.onsubmit = (e) => {
       e.preventDefault();
       const f = new FormData(form);
-      const data = { title: f.get('title').trim(), priority: f.get('priority'), due: f.get('due') || '', notes: f.get('notes').replace(/\s+$/, '') };
+      const data = { title: f.get('title').trim(), priority: task?.priority || 'normal', due: f.get('due') || '', notes: f.get('notes').replace(/\s+$/, '') };
       if (!data.title) return;
       if (task) {
         if (data.notes !== task.notes) data.notesAt = Date.now();
@@ -889,6 +928,7 @@
         });
         state.projects.forEach((p) => { if (p.name.toLowerCase().includes(q)) hits.push({ kind: 'project', p }); });
         state.tasks.forEach((t) => { if (t.title.toLowerCase().includes(q) || t.notes.toLowerCase().includes(q)) hits.push({ kind: 'task', t }); });
+        state.memos.forEach((m) => { if (m.text.toLowerCase().includes(q)) hits.push({ kind: 'memo', m }); });
       }
       sel = Math.min(sel, Math.max(0, hits.length - 1));
       box.innerHTML = !q ? '<div class="empty" style="padding:24px">검색어를 입력하세요</div>'
@@ -897,6 +937,11 @@
           const c = `result ${i === sel ? 'sel' : ''}`;
           if (h.kind === 'day') return `<div class="${c}" data-i="${i}"><div class="rt">🗓 ${hl(weekLabel(h.d.date), q)}</div><div class="rs">업무일지 · 탭 ${h.d.tabs.length}개</div></div>`;
           if (h.kind === 'project') return `<div class="${c}" data-i="${i}"><div class="rt">📁 ${hl(h.p.name, q)}</div><div class="rs">프로젝트 · Task ${projTasks(h.p.id).length}개</div></div>`;
+          if (h.kind === 'memo') {
+            const m = h.m, mi = m.text.toLowerCase().indexOf(q);
+            return `<div class="${c}" data-i="${i}"><div class="rt">📝 ${hl(memoTitle(m), q)}</div>
+              <div class="rs">메모 · ${esc(projName(m.projectId))} · ${weekLabel(m.date)} · ${hl(m.text.slice(Math.max(0, mi - 20), mi + 60).replace(/\n/g, ' '), q)}</div></div>`;
+          }
           const t = h.t, ni = t.notes.toLowerCase().indexOf(q);
           const snippet = ni >= 0 ? hl(t.notes.slice(Math.max(0, ni - 20), ni + 60).replace(/\n/g, ' '), q) : '';
           return `<div class="${c}" data-i="${i}">
@@ -908,6 +953,7 @@
       if (!h) return;
       closeModal();
       if (h.kind === 'day') openDay(h.d.date);
+      else if (h.kind === 'memo') { tmp.activeTab[h.m.date] = MEMO; tmp.flash = h.m.id; openDay(h.m.date); }
       else if (h.kind === 'project') { state.view = { type: 'project', projectId: h.p.id }; tmp.filter = 'all'; commit(); closeSidebar(); }
       else gotoTask(h.t);
     };
@@ -949,12 +995,12 @@
   function rowOf(t, cols) {
     const all = {
       '주': `${weekLabel(t.date)}`, '프로젝트': projName(t.projectId), '탭 메모': tabLabelOf(t), '상태': statusOf(t), 'Task': t.title,
-      '우선순위': PRI[t.priority].label, '마감일': t.due || '', '비고': t.notes || '',
+      '마감일': t.due || '', '비고': t.notes || '',
       '이월': t.carriedFrom ? `${weekName(t.carriedFrom)}에서` : '', '완료일시': t.done && t.doneAt ? stamp(t.doneAt) : '',
     };
     return Object.fromEntries(cols.map((c) => [c, all[c]]));
   }
-  const WIDTH = { '주': 24, '프로젝트': 18, '탭 메모': 12, '상태': 16, 'Task': 40, '우선순위': 9, '마감일': 12, '비고': 70, '이월': 14, '완료일시': 14 };
+  const WIDTH = { '주': 24, '프로젝트': 18, '탭 메모': 12, '상태': 16, 'Task': 40, '마감일': 12, '비고': 70, '이월': 14, '완료일시': 14 };
   function download(filename, blob) {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = filename; a.click();
@@ -980,17 +1026,17 @@
     const day = getDay(date);
     const order = new Map((day?.tabs || []).map((t, i) => [t.id, i]));
     const tasks = dayTasks(date).sort((a, b) => (order.get(a.tabId) - order.get(b.tabId)) || byOrder(a, b));
-    exportExcel(tasks, ['프로젝트', '탭 메모', '상태', 'Task', '우선순위', '마감일', '비고', '이월', '완료일시'], `업무일지_${weekName(date)}_${date}`, weekName(date));
+    exportExcel(tasks, ['프로젝트', '탭 메모', '상태', 'Task', '마감일', '비고', '이월', '완료일시'], `업무일지_${weekName(date)}_${date}`, weekName(date));
   }
-  const exportProject = (p) => exportExcel(projTasks(p.id).sort(byOrder), ['주', '상태', 'Task', '우선순위', '마감일', '비고', '이월', '완료일시'], `${p.name}_${today()}`, p.name);
-  const exportAll = () => exportExcel([...state.tasks].sort(byOrder), ['주', '프로젝트', '탭 메모', '상태', 'Task', '우선순위', '마감일', '비고', '이월', '완료일시'], `근무일지_전체_${today()}`, '전체');
+  const exportProject = (p) => exportExcel(projTasks(p.id).sort(byOrder), ['주', '상태', 'Task', '마감일', '비고', '이월', '완료일시'], `${p.name}_${today()}`, p.name);
+  const exportAll = () => exportExcel([...state.tasks].sort(byOrder), ['주', '프로젝트', '탭 메모', '상태', 'Task', '마감일', '비고', '이월', '완료일시'], `근무일지_전체_${today()}`, '전체');
 
   function taskLines(tasks, indent = '') {
     const out = [];
     [...tasks].sort((a, b) => ((a.done ? 2 : a.carriedTo ? 1 : 0) - (b.done ? 2 : b.carriedTo ? 1 : 0)) || PRI_ORDER.indexOf(a.priority) - PRI_ORDER.indexOf(b.priority))
       .forEach((t) => {
         const extra = [t.due ? `마감 ${short(t.due)}` : '', t.carriedTo ? `→ ${weekName(t.carriedTo)} 이월` : ''].filter(Boolean).join(', ');
-        out.push(`${indent}${t.done ? '☑' : '☐'} [${PRI[t.priority].label}] ${t.title}${extra ? ` (${extra})` : ''}`);
+        out.push(`${indent}${t.done ? '☑' : '☐'} ${t.title}${extra ? ` (${extra})` : ''}`);
         if (t.notes.trim()) t.notes.trim().split('\n').forEach((n) => out.push(`${indent}    ${n}`));
       });
     return out;
@@ -1041,9 +1087,11 @@
     if (v.type === 'day') {
       const tab = activeTabOf(v.date);
       if (!tab) return actions['add-tab']({ dataset: { date: v.date } });
+      if (tab === MEMO) { newMemo(v.date, defaultMemoProject(v.date)); return commit(); }
       if (tab === ALL) return taskModal(null, { date: v.date, chooseTab: true });
       taskModal(null, { date: v.date, tabId: tab.id, projectId: tab.projectId });
     } else if (v.type === 'project') {
+      if (tmp.projTab === 'memo') { newMemo(thisWeek(), v.projectId); return commit(); }
       taskModal(null, { projectId: v.projectId, askDate: true });
     }
   }
@@ -1064,6 +1112,30 @@
     },
     'new-day': () => newDay(),
     'new-project': () => projectModal(),
+    'go-memo': () => { const tw = thisWeek(); ensureDay(tw); tmp.activeTab[tw] = MEMO; openDay(tw); },
+    'open-memo': (el) => { tmp.activeTab[el.dataset.date] = MEMO; openDay(el.dataset.date); },
+    'proj-tab': (el) => { tmp.projTab = el.dataset.t; render(); },
+    'add-memo': (el) => {
+      const date = el.dataset.date || thisWeek();
+      newMemo(date, el.dataset.project || defaultMemoProject(date));
+      commit();
+    },
+    'memo-menu': (el) => {
+      const m = findMemo(el.dataset.id); if (!m) return;
+      showMenu(el, [
+        { label: '↪ 다른 주로 옮기기', fn: async () => {
+          const nd = weekStart(await askDate('옮길 주의 아무 날짜나 고르세요', m.date, '옮기기'));
+          if (nd === m.date) return;
+          ensureDay(nd); m.date = nd; commit(); toast(`${weekName(nd)}로 옮겼어요`);
+        } },
+        ...(state.view.type !== 'day' ? [{ label: '🗓 이 메모의 주로 이동', fn: () => { tmp.activeTab[m.date] = MEMO; tmp.flash = m.id; openDay(m.date); } }] : []),
+        '-',
+        { label: '🗑 메모 삭제', danger: true, fn: async () => {
+          if (m.text.trim() && !(await confirmDlg(`<b>${esc(memoTitle(m))}</b> 메모를 삭제할까요?`))) return;
+          state.memos = state.memos.filter((x) => x !== m); commit(); toast('삭제되었습니다');
+        } },
+      ]);
+    },
     'select-tab': (el) => { tmp.activeTab[el.dataset.date] = el.dataset.id; tmp.editingNotes = null; render(); },
     'add-tab': async (el) => {
       const date = el.dataset.date;
@@ -1104,6 +1176,7 @@
           if (nd === date) return;
           const target = getDay(nd);
           dayTasks(date).forEach((t) => (t.date = nd));
+          weekMemos(date).forEach((m) => (m.date = nd));
           state.tasks.forEach((t) => { if (t.carriedTo === date) t.carriedTo = nd; if (t.carriedFrom === date) t.carriedFrom = nd; });
           if (target) { target.tabs.push(...day.tabs); state.days = state.days.filter((d) => d !== day); }
           else { day.date = nd; state.days.sort((a, b) => (a.date < b.date ? 1 : -1)); }
@@ -1117,6 +1190,7 @@
           const n = dayTasks(date).length;
           if (!(await confirmDlg(`<b>${weekLabel(date)}</b> 업무일지를 삭제할까요?${n ? `<br>이 주의 Task ${n}개도 함께 삭제돼요.` : ''}`))) return;
           removeTasks(dayTasks(date).map((t) => t.id));
+          state.memos = state.memos.filter((m) => m.date !== date);
           state.days = state.days.filter((d) => d !== day);
           if (state.view.type === 'day' && state.view.date === date) state.view = { type: 'home' };
           commit(); toast('삭제되었습니다');
@@ -1135,6 +1209,7 @@
           const n = projTasks(p.id).length;
           if (!(await confirmDlg(`<b>${esc(p.name)}</b> 프로젝트를 삭제할까요?<br>모든 주의 이 프로젝트 탭과 Task ${n}개가 함께 삭제돼요.`))) return;
           removeTasks(projTasks(p.id).map((t) => t.id));
+          projMemos(p.id).forEach((m) => (m.projectId = '')); // 메모는 지우지 않고 "프로젝트 없음"으로
           state.days.forEach((d) => { d.tabs = d.tabs.filter((t) => t.projectId !== p.id); });
           state.projects = state.projects.filter((x) => x !== p);
           if (state.view.projectId === p.id) state.view = { type: 'home' };
@@ -1157,9 +1232,7 @@
     login: () => Sync.login(),
     guest: () => Sync.guest(),
     'show-setup': () => Sync.showSetup(),
-    'toggle-summary': () => { state.ui.summaryHidden = !state.ui.summaryHidden; commit(); },
     filter: (el) => { tmp.filter = el.dataset.f; render(); },
-    sort: () => { state.ui.sortPriority = !state.ui.sortPriority; commit(); },
     excel: () => { const v = state.view; if (v.type === 'day') exportDay(v.date); else if (v.type === 'project') exportProject(getProject(v.projectId)); },
     share: () => { const v = state.view; if (v.type === 'day') shareDay(v.date); else if (v.type === 'project') shareProject(getProject(v.projectId)); },
     carry: (el) => carryModal(el.dataset.date),
@@ -1192,7 +1265,7 @@
     search: () => { closeSidebar(); searchModal(); },
     shortcuts: () => openModal(`<h3>단축키</h3>
       <div style="line-height:2.2"><kbd style="background:#eee;color:#444">Ctrl K</kbd> 검색<br>
-      <kbd style="background:#eee;color:#444">N</kbd> Task 추가 (주간별 · 프로젝트별 화면)<br>
+      <kbd style="background:#eee;color:#444">N</kbd> Task 추가 · 메모 탭에서는 새 메모<br>
       <kbd style="background:#eee;color:#444">Ctrl Enter</kbd> / <kbd style="background:#eee;color:#444">Esc</kbd> 비고 편집 닫기<br>
       <kbd style="background:#eee;color:#444">Esc</kbd> 창 닫기</div>
       <div class="modal-foot"><button class="btn primary" data-action="close-modal">닫기</button></div>`, 'sm'),
@@ -1225,6 +1298,46 @@
   });
 
   // 비고 인라인 편집 — 입력 즉시 자동 저장
+  // 메모 — 입력 즉시 자동 저장 (화면은 다시 그리지 않아서 커서가 유지됨)
+  function autoGrowMemo(ta) { ta.style.height = 'auto'; ta.style.height = Math.max(64, ta.scrollHeight + 2) + 'px'; }
+  document.addEventListener('input', (e) => {
+    const ta = e.target.closest('textarea[data-memo]'); if (!ta) return;
+    const m = findMemo(ta.dataset.memo); if (!m) return;
+    m.text = ta.value; m.editedAt = Date.now();
+    autoGrowMemo(ta); save();
+  });
+  // 내용 없이 벗어난 새 메모는 자동으로 지움
+  document.addEventListener('focusout', (e) => {
+    const ta = e.target.closest?.('textarea[data-memo]'); if (!ta) return;
+    const id = ta.dataset.memo;
+    setTimeout(() => {
+      const m = findMemo(id);
+      if (!m || m.text.trim()) return;
+      if (document.activeElement?.closest(`[data-task="${id}"]`)) return; // 같은 메모의 프로젝트 선택 중
+      state.memos = state.memos.filter((x) => x !== m); save(); render();
+    }, 200);
+  });
+  // 메모 첫 줄 프로젝트 선택
+  document.addEventListener('change', async (e) => {
+    const sel = e.target.closest('select[data-mproj]'); if (!sel) return;
+    const m = findMemo(sel.dataset.mproj); if (!m) return;
+    let pid = sel.value;
+    if (pid === '__new') {
+      sel.value = m.projectId;
+      const name = await askText('새 프로젝트', '', '프로젝트 이름');
+      if (!name) return;
+      pid = newProject(name).id;
+      toast(`"${name}" 프로젝트를 만들었어요`);
+    }
+    m.projectId = pid;
+    if (pid) tmp.lastMemoProject = pid;
+    if (!m.text.trim()) tmp.focusMemo = m.id; // 새 메모면 바로 이어서 적을 수 있게
+    commit();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.target.matches('textarea[data-memo]') && e.key === 'Escape') { e.stopPropagation(); e.target.blur(); }
+  }, true);
+
   function autoGrow(ta) { ta.style.height = 'auto'; ta.style.height = Math.max(90, ta.scrollHeight + 2) + 'px'; }
   document.addEventListener('input', (e) => {
     const ta = e.target.closest('textarea[data-notes]'); if (!ta) return;

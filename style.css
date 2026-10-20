@@ -576,3 +576,48 @@ kbd {
 .dtab.all .tn { font-weight: 800; }
 .group-empty { color: var(--muted); font-size: 13px; padding: 6px 4px 2px; }
 .dg-head .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+/* ───────── 주간 메모 ───────── */
+.badges:empty { display: none; }
+.dtab.memo-tab .tn { font-weight: 700; }
+.memo-hint { color: var(--muted); font-size: 13px; }
+.sheet { padding: 20px 30px 60px; display: grid; gap: 14px; }
+.memo {
+  background: #fff; border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 1px 3px #c0708f14; padding: 12px 16px 6px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.memo:focus-within { border-color: #e7a3bd; box-shadow: 0 4px 14px #e07ea322; }
+.memo.flash { animation: flash 1.4s ease; }
+.memo-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.memo-head .grow { flex: 1; }
+.memo-date { color: var(--muted); font-size: 12px; }
+
+/* 첫 줄: 프로젝트 선택 상자 */
+.proj-sel {
+  position: relative; display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 30px 5px 11px; border-radius: 999px; cursor: pointer;
+  background: color-mix(in srgb, var(--pc) 16%, #fff); border: 1.5px solid color-mix(in srgb, var(--pc) 55%, #fff);
+  font-size: 13px; font-weight: 700; color: var(--text);
+}
+.proj-sel::after { content: '▾'; position: absolute; right: 11px; font-size: 11px; color: var(--muted); pointer-events: none; }
+.proj-sel i { width: 9px; height: 9px; border-radius: 50%; background: var(--pc); flex-shrink: 0; }
+.proj-sel select {
+  appearance: none; -webkit-appearance: none; border: 0; background: transparent; outline: none;
+  font: inherit; color: inherit; cursor: pointer; padding: 0; max-width: 220px;
+}
+.proj-sel:hover { border-color: var(--pc); }
+.memo-more { border: 0; background: none; color: var(--muted); font-size: 16px; padding: 2px 6px; border-radius: 6px; }
+.memo-more:hover { background: #fbeef3; color: var(--text); }
+
+/* 줄 노트 */
+.memo-text {
+  display: block; width: 100%; border: 0; outline: none; resize: none; overflow: hidden;
+  font: inherit; font-size: 15px; color: #4a3b45; line-height: 30px; padding: 0 2px 2px;
+  min-height: 64px; background-color: transparent;
+  background-image: repeating-linear-gradient(transparent 0 29px, #f3dbe5 29px 30px);
+  background-attachment: local;
+}
+.memo-text::first-line { font-weight: 800; color: var(--text); }
+.memo-text::placeholder { color: #cdb5c0; }
+@media (max-width: 900px) { .sheet { padding-left: 16px; padding-right: 16px; } }
