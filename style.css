@@ -621,3 +621,57 @@ kbd {
 .memo-text::first-line { font-weight: 800; color: var(--text); }
 .memo-text::placeholder { color: #cdb5c0; }
 @media (max-width: 900px) { .sheet { padding-left: 16px; padding-right: 16px; } }
+
+/* ───────── 📁 프로젝트 폴더 ───────── */
+.side-label .link { cursor: pointer; }
+.side-label .link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.folders-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 22px; }
+.folders-head h1 { margin: 0; }
+.folders-head .grow { flex: 1; }
+.folders-head .muted { color: var(--muted); font-size: 13px; }
+.folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 22px 14px; }
+.folder {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 16px 10px 14px; border-radius: 14px; cursor: pointer; transition: background .15s;
+}
+.folder:hover { background: #fff; box-shadow: 0 2px 10px #c0708f14; }
+.folder-ic { width: 78px; height: 61px; transition: transform .15s; }
+.folder:hover .folder-ic { transform: translateY(-2px); }
+.folder-bar { width: 64px; height: 4px; border-radius: 2px; background: var(--track); overflow: hidden; margin-top: 2px; }
+.folder-bar span { display: block; height: 100%; background: var(--green); }
+.folder-pct { font-size: 11px; font-weight: 700; color: var(--muted); }
+.folder-name { font-size: 14px; font-weight: 600; text-align: center; line-height: 1.35; word-break: break-all; max-width: 130px; }
+.folder-more {
+  position: absolute; top: 6px; right: 6px; border: 0; background: none; color: var(--muted);
+  font-size: 15px; padding: 2px 6px; border-radius: 6px; opacity: 0;
+}
+.folder:hover .folder-more { opacity: 1; }
+.folder-more:hover { background: #fbeef3; color: var(--text); }
+.folder.add .folder-plus {
+  width: 78px; height: 61px; border: 2px dashed #e8aac0; border-radius: 12px;
+  display: grid; place-items: center; font-size: 28px; color: var(--ink);
+}
+.folder.add .folder-name { color: var(--ink); margin-top: 18px; }
+
+/* 프로젝트 열기: 넓은 메모장 */
+.project-head .back-link { border: 0; background: none; color: var(--muted); font-size: 13px; padding: 0 0 8px; }
+.project-head .back-link:hover { color: var(--ink); }
+.folder-ic.sm { width: 34px; height: 27px; }
+.proj-progress { padding: 14px 30px 0; background: var(--surface); }
+.note-wrap { padding: 20px 30px 40px; }
+.note-text {
+  display: block; width: 100%; min-height: 420px; resize: none; overflow: hidden;
+  border: 1px solid var(--line); border-radius: 14px; outline: none;
+  padding: 18px 24px; font: inherit; font-size: 15.5px; line-height: 32px; color: #4a3b45;
+  background-color: #fff;
+  background-image: repeating-linear-gradient(transparent 0 31px, #f3dbe5 31px 32px);
+  background-position: 0 18px; background-attachment: local;
+  box-shadow: 0 1px 3px #c0708f14;
+}
+.note-text:focus { border-color: #e7a3bd; box-shadow: 0 4px 14px #e07ea322; }
+.note-text::placeholder { color: #cdb5c0; }
+.note-status { text-align: right; color: var(--muted); font-size: 12px; margin-top: 8px; }
+@media (max-width: 900px) {
+  .note-wrap, .proj-progress { padding-left: 16px; padding-right: 16px; }
+  .folders { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+}

@@ -164,7 +164,7 @@
   }
 
   let state = load();
-  const tmp = { filter: 'all', editingNotes: null, expandedNotes: new Set(), flash: null, activeTab: {}, projTab: 'task', focusMemo: null };
+  const tmp = { filter: 'all', editingNotes: null, expandedNotes: new Set(), flash: null, activeTab: {}, projTab: 'note', focusMemo: null };
 
   // 이 PC(브라우저)에 캐시로 저장 — 드라이브 연결이 끊겨도 작업은 유지됨
   function saveLocal() {
@@ -305,11 +305,12 @@
         <div class="nav-item ${v.type === 'home' ? 'active' : ''}" data-action="go" data-view="home">🏠 홈</div>
         <div class="nav-item ${v.type === 'calendar' ? 'active' : ''}" data-action="go" data-view="calendar">📅 캘린더</div>
         <div class="nav-item ${v.type === 'day' && v.date === thisWeek() && tmp.activeTab[v.date] === MEMO ? 'active' : ''}" data-action="go-memo">📝 메모장</div>
+        <div class="nav-item ${v.type === 'projects' ? 'active' : ''}" data-action="go" data-view="projects">📁 프로젝트</div>
         <div class="side-sep"></div>
         <div class="side-label"><span>🗓 주간별</span><button class="icon-btn add" data-action="new-day" title="주 추가">+</button></div>
         ${days}
         <div class="side-sep"></div>
-        <div class="side-label"><span>📁 프로젝트별</span><button class="icon-btn add" data-action="new-project" title="프로젝트 추가">+</button></div>
+        <div class="side-label"><span class="link" data-action="go" data-view="projects">📁 프로젝트</span><button class="icon-btn add" data-action="new-project" title="프로젝트 추가">+</button></div>
         ${projects}
       </div>
       <div class="side-foot">
@@ -337,9 +338,11 @@
     if (v.type === 'day' && isDate(v.date)) main.innerHTML = dayView(v.date);
     else if (v.type === 'project' && getProject(v.projectId)) main.innerHTML = projectView(getProject(v.projectId));
     else if (v.type === 'calendar') main.innerHTML = calendarView();
+    else if (v.type === 'projects') main.innerHTML = projectsView();
     else main.innerHTML = homeView();
 
     main.querySelectorAll('textarea[data-memo]').forEach(autoGrowMemo);
+    main.querySelectorAll('textarea[data-note]').forEach(autoGrowNote);
     if (tmp.focusMemo) {
       const ta = main.querySelector(`textarea[data-memo="${tmp.focusMemo}"]`);
       if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
@@ -560,34 +563,82 @@
           ${memos.filter((m) => m.date === w).map(memoCard).join('')}
         </div>`).join('') || emptyBox('이 프로젝트 메모가 아직 없어요.<br>주간 화면의 <b>📝 메모</b> 탭에서 메모를 쓰고 이 프로젝트를 고르면 여기에 모여요.')}</div>`;
   }
-  function projectView(p) {
-    const all = projTasks(p.id), s = stats(all), list = filterSort(all);
-    const isMemo = tmp.projTab === 'memo';
-    const ptabs = `<div class="tabbar">
-      <div class="dtab ${isMemo ? '' : 'on'}" data-action="proj-tab" data-t="task"><span class="tn">할 일</span><span class="tc">${s.done}/${s.total}</span></div>
-      <div class="dtab memo-tab ${isMemo ? 'on' : ''}" data-action="proj-tab" data-t="memo"><span class="tn">📝 메모</span><span class="tc">${projMemos(p.id).length}</span></div>
-    </div>`;
-    const dates = [...new Set(list.map((t) => t.date))].sort().reverse();
-    const groups = dates.map((d) => {
-      const items = list.filter((t) => t.date === d);
-      const gs = stats(all.filter((t) => t.date === d));
-      return `<div class="date-group">
-        <div class="dg-head" data-action="open-day" data-date="${d}" data-project="${p.id}" title="이 주의 업무일지로 이동">
-          <span class="dg-date">🗓 ${weekLabel(d)}</span>${d === thisWeek() ? '<span class="today-pill">이번 주</span>' : ''}
-          <span class="dg-cnt">${gs.done}/${gs.total} 완료</span><span class="grow"></span><span class="dg-go">주간으로 이동 ›</span>
-        </div>
-        ${items.map(taskCard).join('')}
+  const folderSvg = (color) => `<svg class="folder-ic" viewBox="0 0 64 50" aria-hidden="true">
+      <path d="M4 9a5 5 0 0 1 5-5h15.5a4 4 0 0 1 2.9 1.2L32 10h23a5 5 0 0 1 5 5v26a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z" fill="${color}" opacity=".55"/>
+      <path d="M4 18a4 4 0 0 1 4-4h48a4 4 0 0 1 4 4v23a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z" fill="${color}" opacity=".85"/>
+    </svg>`;
+
+  // ── 📁 프로젝트: 폴더 목록 ──
+  function projectsView() {
+    const cards = state.projects.map((p) => {
+      const st = stats(projTasks(p.id));
+      return `<div class="folder" data-action="open-project" data-id="${p.id}" title="${esc(p.name)}">
+        <button class="folder-more" data-action="project-menu" data-id="${p.id}" title="더보기">⋯</button>
+        ${folderSvg(p.color)}
+        <div class="folder-bar"><span style="width:${st.pct}%"></span></div>
+        <div class="folder-pct">${st.total ? st.pct + '%' : '–'}</div>
+        <div class="folder-name">${esc(p.name)}</div>
       </div>`;
     }).join('');
-    return `${mobileTop(p.name)}
-      ${headBlock({
-        dot: p.color, title: esc(p.name), titleAction: `data-action="rename-project" data-id="${p.id}" title="클릭하여 이름 변경" class="editable"`, s,
-        menu: `<button class="btn sm" data-action="project-menu" data-id="${p.id}">⋯ 프로젝트 메뉴</button>`,
-      })}
-      ${ptabs}
-      ${isMemo ? projectMemoBody(p) : `${toolbar()}
-      <div class="tasks">${groups || emptyBox(all.length ? '조건에 맞는 Task가 없습니다.'
-        : '이 프로젝트에 아직 Task가 없어요.<br>주간별 화면에서 이 프로젝트 탭을 추가하거나, 오른쪽 위 <b>+ Task 추가</b>를 눌러보세요.')}</div>`}`;
+    return `${mobileTop('프로젝트')}
+      <div class="page">
+        <div class="folders-head"><h1>프로젝트</h1><span class="grow"></span><span class="muted">${state.projects.length} projects</span></div>
+        <div class="folders">${cards}
+          <div class="folder add" data-action="new-project" title="새 프로젝트">
+            <div class="folder-plus">+</div>
+            <div class="folder-name">새 프로젝트</div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // ── 프로젝트 열기: 넓은 메모장 (+ 이 프로젝트의 할 일 / 메모 모아보기) ──
+  function projectView(p) {
+    const all = projTasks(p.id), s = stats(all), list = filterSort(all);
+    const tab = ['note', 'task', 'memo'].includes(tmp.projTab) ? tmp.projTab : 'note';
+    const ptabs = `<div class="tabbar">
+      <div class="dtab ${tab === 'note' ? 'on' : ''}" data-action="proj-tab" data-t="note"><span class="tn">✏️ 노트</span></div>
+      <div class="dtab ${tab === 'task' ? 'on' : ''}" data-action="proj-tab" data-t="task"><span class="tn">할 일</span><span class="tc">${s.done}/${s.total}</span></div>
+      <div class="dtab memo-tab ${tab === 'memo' ? 'on' : ''}" data-action="proj-tab" data-t="memo"><span class="tn">📝 메모</span><span class="tc">${projMemos(p.id).length}</span></div>
+    </div>`;
+    const head = `<div class="list-head project-head">
+      <button class="back-link" data-action="go" data-view="projects">‹ 프로젝트</button>
+      <div class="list-title">${folderSvg(p.color).replace('folder-ic', 'folder-ic sm')}
+        <h1 data-action="rename-project" data-id="${p.id}" title="클릭하여 이름 변경" class="editable">${esc(p.name)}</h1>
+        <span class="grow"></span>
+        <button class="btn sm" data-action="project-menu" data-id="${p.id}">⋯ 프로젝트 메뉴</button>
+      </div>
+    </div>`;
+
+    let body;
+    if (tab === 'note') {
+      body = `<div class="note-wrap">
+        <textarea class="note-text" data-note="${p.id}" spellcheck="false"
+          placeholder="여기에 자유롭게 쭉 적어주세요. 쓰는 대로 자동 저장돼요.&#10;&#10;예) 프로젝트 개요, 담당자, 진행 기록, 이슈, 참고 링크…">${esc(p.note || '')}</textarea>
+        <div class="note-status" data-note-status="${p.id}">${p.noteAt ? `자동 저장됨 · ${stamp(p.noteAt)}` : '쓰는 대로 자동 저장돼요'}</div>
+      </div>`;
+    } else if (tab === 'memo') {
+      body = projectMemoBody(p);
+    } else {
+      const dates = [...new Set(list.map((t) => t.date))].sort().reverse();
+      const groups = dates.map((d) => {
+        const items = list.filter((t) => t.date === d);
+        const gs = stats(all.filter((t) => t.date === d));
+        return `<div class="date-group">
+          <div class="dg-head" data-action="open-day" data-date="${d}" data-project="${p.id}" title="이 주의 업무일지로 이동">
+            <span class="dg-date">🗓 ${weekLabel(d)}</span>${d === thisWeek() ? '<span class="today-pill">이번 주</span>' : ''}
+            <span class="dg-cnt">${gs.done}/${gs.total} 완료</span><span class="grow"></span><span class="dg-go">주간으로 이동 ›</span>
+          </div>
+          ${items.map(taskCard).join('')}
+        </div>`;
+      }).join('');
+      body = `<div class="proj-progress"><div class="bar"><span style="width:${s.pct}%"></span></div>
+          <div class="caption">${s.done} / ${s.total} 완료 · ${s.pct}%</div></div>
+        ${toolbar()}
+        <div class="tasks">${groups || emptyBox(all.length ? '조건에 맞는 Task가 없습니다.'
+          : '이 프로젝트에 아직 Task가 없어요.<br>주간별 화면에서 이 프로젝트 탭을 추가하거나, 오른쪽 위 <b>+ Task 추가</b>를 눌러보세요.')}</div>`;
+    }
+    return `${mobileTop(p.name)}${head}${ptabs}${body}`;
   }
 
   // ── 홈 ──
@@ -838,7 +889,7 @@
       if (p) Object.assign(p, { name, color: f.get('color') || p.color });
       else {
         const np = newProject(name); np.color = f.get('color') || np.color;
-        state.view = { type: 'project', projectId: np.id }; tmp.filter = 'all';
+        state.view = { type: 'project', projectId: np.id }; tmp.filter = 'all'; tmp.projTab = 'note';
       }
       closeModal(); commit();
     };
@@ -1092,6 +1143,7 @@
       taskModal(null, { date: v.date, tabId: tab.id, projectId: tab.projectId });
     } else if (v.type === 'project') {
       if (tmp.projTab === 'memo') { newMemo(thisWeek(), v.projectId); return commit(); }
+      if (tmp.projTab !== 'task') { const ta = document.querySelector('textarea[data-note]'); if (ta) ta.focus(); return; }
       taskModal(null, { projectId: v.projectId, askDate: true });
     }
   }
@@ -1102,6 +1154,7 @@
     'open-day': (el) => openDay(el.dataset.date, el.dataset.project),
     'open-project': (el) => {
       if (state.view.projectId !== el.dataset.id) tmp.filter = 'all';
+      if (state.view.projectId !== el.dataset.id) tmp.projTab = 'note';
       state.view = { type: 'project', projectId: el.dataset.id }; tmp.editingNotes = null; commit(); closeSidebar();
     },
     'start-today': () => { ensureDay(thisWeek()); openDay(thisWeek()); },
@@ -1207,12 +1260,12 @@
         '-',
         { label: '🗑 프로젝트 삭제', danger: true, fn: async () => {
           const n = projTasks(p.id).length;
-          if (!(await confirmDlg(`<b>${esc(p.name)}</b> 프로젝트를 삭제할까요?<br>모든 주의 이 프로젝트 탭과 Task ${n}개가 함께 삭제돼요.`))) return;
+          if (!(await confirmDlg(`<b>${esc(p.name)}</b> 프로젝트를 삭제할까요?<br>모든 주의 이 프로젝트 탭과 Task ${n}개, 그리고 노트가 함께 삭제돼요.`))) return;
           removeTasks(projTasks(p.id).map((t) => t.id));
           projMemos(p.id).forEach((m) => (m.projectId = '')); // 메모는 지우지 않고 "프로젝트 없음"으로
           state.days.forEach((d) => { d.tabs = d.tabs.filter((t) => t.projectId !== p.id); });
           state.projects = state.projects.filter((x) => x !== p);
-          if (state.view.projectId === p.id) state.view = { type: 'home' };
+          if (state.view.projectId === p.id) state.view = { type: 'projects' };
           commit(); toast('삭제되었습니다');
         } },
       ]);
@@ -1298,6 +1351,20 @@
   });
 
   // 비고 인라인 편집 — 입력 즉시 자동 저장
+  // 프로젝트 노트 — 입력 즉시 자동 저장
+  function autoGrowNote(ta) {
+    const min = Math.max(420, innerHeight - ta.getBoundingClientRect().top - 60);
+    ta.style.height = 'auto'; ta.style.height = Math.max(min, ta.scrollHeight + 2) + 'px';
+  }
+  document.addEventListener('input', (e) => {
+    const ta = e.target.closest('textarea[data-note]'); if (!ta) return;
+    const p = getProject(ta.dataset.note); if (!p) return;
+    p.note = ta.value; p.noteAt = Date.now();
+    autoGrowNote(ta); save();
+    const st = document.querySelector(`[data-note-status="${p.id}"]`);
+    if (st) st.textContent = `자동 저장됨 · ${stamp(p.noteAt)}`;
+  });
+
   // 메모 — 입력 즉시 자동 저장 (화면은 다시 그리지 않아서 커서가 유지됨)
   function autoGrowMemo(ta) { ta.style.height = 'auto'; ta.style.height = Math.max(64, ta.scrollHeight + 2) + 'px'; }
   document.addEventListener('input', (e) => {
