@@ -10,8 +10,12 @@
     low:    { label: '낮음', color: 'var(--low)',    bg: 'var(--low-bg)' },
   };
   const PRI_ORDER = ['urgent', 'high', 'normal', 'low'];
-  const COLORS = ['#e07ea3', '#f4a7b9', '#f6c28b', '#f3dd8e', '#9fd8b8', '#9cc5ee', '#b9a7ea', '#d6b4d9'];
+  const COLORS = ['#f7b6cc', '#fbcbd9', '#f9d3b0', '#f6e3a6', '#b9e4cc', '#b7daf3', '#d0c5f2', '#e4c9e8'];
+  // 예전 진한 파스텔 → 연한 파스텔 (기존 프로젝트 색을 새 색감으로)
+  const OLD_COLORS = { '#e07ea3': '#f7b6cc', '#f4a7b9': '#fbcbd9', '#f6c28b': '#f9d3b0', '#f3dd8e': '#f6e3a6', '#9fd8b8': '#b9e4cc', '#9cc5ee': '#b7daf3', '#b9a7ea': '#d0c5f2', '#d6b4d9': '#e4c9e8', '#16182b': '#f7b6cc' };
   const DOW = ['일', '월', '화', '수', '목', '금', '토'];
+  const DOW_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const arr = (v) => (Array.isArray(v) ? v : []);
@@ -62,7 +66,7 @@
           notes: '- [x] 테스트 환경 세팅 완료\n- [ ] 207-1 ~ 207-5 케이스 수행\n- [ ] 결과서 작성 후 공유\n담당자 확인 필요: 인증 토큰 만료 시간', notesAt: now },
         { id: uid(), date: yd, tabId: tab0, projectId: pid, title: '테스트 환경 세팅', priority: 'normal', due: '', done: true, notes: '', createdAt: now, doneAt: now },
       ],
-      view: { type: 'day', date: td },
+      view: { type: 'home' },
       ui: { summaryHidden: false, sortPriority: false, calMonth: td.slice(0, 7), months: {} },
     };
   }
@@ -142,7 +146,7 @@
     d.projects = arr(d.projects);
     d.days = arr(d.days).filter((x) => isDate(x.date));
     d.tasks = arr(d.tasks).filter((t) => isDate(t.date));
-    d.projects.forEach((p) => { if (!p.color || p.color === '#16182b') p.color = COLORS[0]; });
+    d.projects.forEach((p) => { p.color = OLD_COLORS[p.color] || p.color || COLORS[0]; });
     d.days.forEach((x) => { x.tabs = arr(x.tabs); });
     // 주간 메모: { id, date(주), projectId, text, createdAt }
     d.memos = arr(d.memos).filter((m) => isDate(m.date));
@@ -164,7 +168,7 @@
   }
 
   let state = load();
-  const tmp = { filter: 'all', editingNotes: null, expandedNotes: new Set(), flash: null, activeTab: {}, projTab: 'note', focusMemo: null };
+  const tmp = { filter: 'all', editingNotes: null, expandedNotes: new Set(), flash: null, activeTab: {}, projTab: 'task', focusMemo: null };
 
   // 이 PC(브라우저)에 캐시로 저장 — 드라이브 연결이 끊겨도 작업은 유지됨
   function saveLocal() {
@@ -302,16 +306,20 @@
       </div>
       <button class="search-btn" data-action="search">🔍 <span class="grow">검색...</span><kbd>Ctrl K</kbd></button>
       <div class="side-scroll">
-        <div class="nav-item ${v.type === 'home' ? 'active' : ''}" data-action="go" data-view="home">🏠 홈</div>
-        <div class="nav-item ${v.type === 'calendar' ? 'active' : ''}" data-action="go" data-view="calendar">📅 캘린더</div>
-        <div class="nav-item ${v.type === 'day' && v.date === thisWeek() && tmp.activeTab[v.date] === MEMO ? 'active' : ''}" data-action="go-memo">📝 메모장</div>
-        <div class="nav-item ${v.type === 'projects' ? 'active' : ''}" data-action="go" data-view="projects">📁 프로젝트</div>
+        <div class="nav-item ${v.type === 'home' ? 'active' : ''}" data-action="go" data-view="home">🏠 Home</div>
+        <div class="nav-item ${v.type === 'calendar' ? 'active' : ''}" data-action="go" data-view="calendar">🗓️ Calendar</div>
+        <div class="nav-item ${v.type === 'monthly' ? 'active' : ''}" data-action="go" data-view="monthly">📊 Monthly</div>
+        <div class="nav-item ${v.type === 'day' && v.date === thisWeek() && tmp.activeTab[v.date] === MEMO ? 'active' : ''}" data-action="go-memo">📝 Memo</div>
         <div class="side-sep"></div>
-        <div class="side-label"><span>🗓 주간별</span><button class="icon-btn add" data-action="new-day" title="주 추가">+</button></div>
+        <div class="side-label"><span>📋 Weekly</span><button class="icon-btn add" data-action="new-day" title="주 추가">+</button></div>
         ${days}
         <div class="side-sep"></div>
-        <div class="side-label"><span class="link" data-action="go" data-view="projects">📁 프로젝트</span><button class="icon-btn add" data-action="new-project" title="프로젝트 추가">+</button></div>
-        ${projects}
+        <div class="side-label proj-label">
+          <button class="caret-btn" data-action="toggle-projects" title="${state.ui.projectsOpen ? '접기' : '펼치기'}">${state.ui.projectsOpen ? '▼' : '▶'}</button>
+          <span class="link ${v.type === 'projects' ? 'active' : ''}" data-action="go" data-view="projects" title="폴더 목록 보기">📁 Projects</span>
+          <span class="grow"></span><button class="icon-btn add" data-action="new-project" title="프로젝트 추가">+</button>
+        </div>
+        ${state.ui.projectsOpen ? projects : ''}
       </div>
       <div class="side-foot">
         <div id="sync-status"></div>
@@ -339,9 +347,11 @@
     else if (v.type === 'project' && getProject(v.projectId)) main.innerHTML = projectView(getProject(v.projectId));
     else if (v.type === 'calendar') main.innerHTML = calendarView();
     else if (v.type === 'projects') main.innerHTML = projectsView();
+    else if (v.type === 'monthly') main.innerHTML = monthlyView();
     else main.innerHTML = homeView();
 
     main.querySelectorAll('textarea[data-memo]').forEach(autoGrowMemo);
+    if (tmp.focusQuick) { main.querySelector(`form[data-quick="${tmp.focusQuick}"] input`)?.focus(); tmp.focusQuick = null; }
     main.querySelectorAll('textarea[data-note]').forEach(autoGrowNote);
     if (tmp.focusMemo) {
       const ta = main.querySelector(`textarea[data-memo="${tmp.focusMemo}"]`);
@@ -412,7 +422,7 @@
     let notes = '';
     if (tmp.editingNotes === t.id) {
       notes = `<div class="notes-edit">
-        <textarea data-notes="${t.id}" placeholder="비고를 자유롭게 적어주세요.&#10;- 글머리표&#10;- [ ] 할 일  /  - [x] 완료한 일">${esc(t.notes)}</textarea>
+        <textarea data-notes="${t.id}">${esc(t.notes)}</textarea>
         <div class="hint"><span>자동 저장 · <kbd style="background:#eee;color:#666">Ctrl+Enter</kbd> 또는 <kbd style="background:#eee;color:#666">Esc</kbd>로 닫기</span>
         <button class="btn sm" data-action="close-notes">완료</button></div>
       </div>`;
@@ -428,8 +438,7 @@
       <button class="check" data-action="toggle-task" data-id="${t.id}" aria-label="완료 표시">${t.done ? '✓' : ''}</button>
       <div class="task-title">${esc(t.title)}</div>
       <div class="tags">
-        ${priTag(t)}${dueTag(t)}
-        ${t.carriedFrom ? `<span class="tag carry-from">← ${weekName(t.carriedFrom)}에서 이월</span>` : ''}
+        ${t.done ? `<span class="tag done-tag">✓ 완료${t.doneAt ? ` · ${short(fmt(new Date(t.doneAt)))}` : ''}</span>` : ''}${priTag(t)}${dueTag(t)}
         ${t.carriedTo ? `<span class="tag carry">→ ${weekName(t.carriedTo)}로 이월됨</span>` : ''}
       </div>
       ${notes}
@@ -459,14 +468,13 @@
         <span class="grow"></span>
         <button class="memo-more" data-action="memo-menu" data-id="${m.id}" title="더보기">⋯</button>
       </div>
-      <textarea class="memo-text" data-memo="${m.id}" rows="2" spellcheck="false"
-        placeholder="여기에 자유롭게 적어주세요. 첫 줄은 제목처럼 굵게 보여요.">${esc(m.text)}</textarea>
+      <textarea class="memo-text" data-memo="${m.id}" rows="2" spellcheck="false">${esc(m.text)}</textarea>
     </div>`;
   }
   function memoBody(date) {
     const memos = weekMemos(date);
     return `<div class="toolbar">
-        <span class="memo-hint">📝 이번 주 메모 — 완료 표시 없이 자유롭게 적어두는 곳이에요.</span><span class="grow"></span>
+        <span class="grow"></span>
         <button class="btn primary" data-action="add-memo" data-date="${date}">+ 새 메모</button>
       </div>
       <div class="sheet">${memos.length ? memos.map(memoCard).join('')
@@ -509,9 +517,9 @@
     const tab = activeTabOf(date);
     const carry = carryCandidates(date);
     const allTab = day.tabs.length ? `<div class="dtab all ${tab === ALL ? 'on' : ''}" data-action="select-tab" data-date="${date}" data-id="${ALL}">
-        <span class="tn">전체</span><span class="tc">${s.done}/${s.total}</span></div>` : '';
+        <span class="tn">All</span><span class="tc">${s.done}/${s.total}</span></div>` : '';
     const memoTab = `<div class="dtab memo-tab ${tab === MEMO ? 'on' : ''}" data-action="select-tab" data-date="${date}" data-id="${MEMO}">
-        <span class="tn">📝 메모</span><span class="tc">${weekMemos(date).length}</span></div>`;
+        <span class="tn">📝 Memo</span><span class="tc">${weekMemos(date).length}</span></div>`;
     const tabs = allTab + memoTab + day.tabs.map((t) => {
       const ts = stats(tabTasks(t.id));
       return `<div class="dtab ${tab && tab !== ALL && tab !== MEMO && t.id === tab.id ? 'on' : ''}" data-action="select-tab" data-date="${date}" data-id="${t.id}">
@@ -545,7 +553,7 @@
       })}
       ${carry.length ? `<div class="carry-banner">📥 이전 주의 미완료 Task가 <b>${carry.length}개</b> 있어요.
         <button class="btn sm primary" data-action="carry" data-date="${date}">가져오기</button></div>` : ''}
-      <div class="tabbar">${tabs}<button class="dtab add" data-action="add-tab" data-date="${date}">+ 탭 추가</button></div>
+      <div class="tabbar">${tabs}<button class="dtab add" data-action="add-tab" data-date="${date}">+ Tab</button></div>
       ${body}`;
   }
 
@@ -553,7 +561,7 @@
   function projectMemoBody(p) {
     const memos = projMemos(p.id);
     const weeks = [...new Set(memos.map((m) => m.date))].sort().reverse();
-    return `<div class="toolbar"><span class="memo-hint">주간 메모에서 이 프로젝트로 고른 메모가 모여요.</span><span class="grow"></span>
+    return `<div class="toolbar"><span class="grow"></span>
         <button class="btn primary" data-action="add-memo" data-date="${thisWeek()}" data-project="${p.id}">+ 이번 주에 메모</button></div>
       <div class="sheet">${weeks.map((w) => `<div class="date-group">
           <div class="dg-head" data-action="open-memo" data-date="${w}" title="이 주의 메모로 이동">
@@ -564,8 +572,8 @@
         </div>`).join('') || emptyBox('이 프로젝트 메모가 아직 없어요.<br>주간 화면의 <b>📝 메모</b> 탭에서 메모를 쓰고 이 프로젝트를 고르면 여기에 모여요.')}</div>`;
   }
   const folderSvg = (color) => `<svg class="folder-ic" viewBox="0 0 64 50" aria-hidden="true">
-      <path d="M4 9a5 5 0 0 1 5-5h15.5a4 4 0 0 1 2.9 1.2L32 10h23a5 5 0 0 1 5 5v26a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z" fill="${color}" opacity=".55"/>
-      <path d="M4 18a4 4 0 0 1 4-4h48a4 4 0 0 1 4 4v23a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z" fill="${color}" opacity=".85"/>
+      <path d="M4 9a5 5 0 0 1 5-5h15.5a4 4 0 0 1 2.9 1.2L32 10h23a5 5 0 0 1 5 5v26a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z" fill="${color}" opacity=".6"/>
+      <path d="M4 18a4 4 0 0 1 4-4h48a4 4 0 0 1 4 4v23a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z" fill="${color}"/>
     </svg>`;
 
   // ── 📁 프로젝트: 폴더 목록 ──
@@ -580,9 +588,9 @@
         <div class="folder-name">${esc(p.name)}</div>
       </div>`;
     }).join('');
-    return `${mobileTop('프로젝트')}
+    return `${mobileTop('Projects')}
       <div class="page">
-        <div class="folders-head"><h1>프로젝트</h1><span class="grow"></span><span class="muted">${state.projects.length} projects</span></div>
+        <div class="folders-head"><h1>Projects</h1><span class="grow"></span><span class="muted">${state.projects.length} projects</span></div>
         <div class="folders">${cards}
           <div class="folder add" data-action="new-project" title="새 프로젝트">
             <div class="folder-plus">+</div>
@@ -595,14 +603,14 @@
   // ── 프로젝트 열기: 넓은 메모장 (+ 이 프로젝트의 할 일 / 메모 모아보기) ──
   function projectView(p) {
     const all = projTasks(p.id), s = stats(all), list = filterSort(all);
-    const tab = ['note', 'task', 'memo'].includes(tmp.projTab) ? tmp.projTab : 'note';
+    const tab = ['note', 'task', 'memo'].includes(tmp.projTab) ? tmp.projTab : 'task';
     const ptabs = `<div class="tabbar">
-      <div class="dtab ${tab === 'note' ? 'on' : ''}" data-action="proj-tab" data-t="note"><span class="tn">✏️ 노트</span></div>
-      <div class="dtab ${tab === 'task' ? 'on' : ''}" data-action="proj-tab" data-t="task"><span class="tn">할 일</span><span class="tc">${s.done}/${s.total}</span></div>
-      <div class="dtab memo-tab ${tab === 'memo' ? 'on' : ''}" data-action="proj-tab" data-t="memo"><span class="tn">📝 메모</span><span class="tc">${projMemos(p.id).length}</span></div>
+      <div class="dtab ${tab === 'task' ? 'on' : ''}" data-action="proj-tab" data-t="task"><span class="tn">Tasks</span><span class="tc">${s.done}/${s.total}</span></div>
+      <div class="dtab ${tab === 'note' ? 'on' : ''}" data-action="proj-tab" data-t="note"><span class="tn">📜 Changelog</span></div>
+      <div class="dtab memo-tab ${tab === 'memo' ? 'on' : ''}" data-action="proj-tab" data-t="memo"><span class="tn">📝 Memo</span><span class="tc">${projMemos(p.id).length}</span></div>
     </div>`;
     const head = `<div class="list-head project-head">
-      <button class="back-link" data-action="go" data-view="projects">‹ 프로젝트</button>
+      <button class="back-link" data-action="go" data-view="projects">‹ Projects</button>
       <div class="list-title">${folderSvg(p.color).replace('folder-ic', 'folder-ic sm')}
         <h1 data-action="rename-project" data-id="${p.id}" title="클릭하여 이름 변경" class="editable">${esc(p.name)}</h1>
         <span class="grow"></span>
@@ -613,9 +621,8 @@
     let body;
     if (tab === 'note') {
       body = `<div class="note-wrap">
-        <textarea class="note-text" data-note="${p.id}" spellcheck="false"
-          placeholder="여기에 자유롭게 쭉 적어주세요. 쓰는 대로 자동 저장돼요.&#10;&#10;예) 프로젝트 개요, 담당자, 진행 기록, 이슈, 참고 링크…">${esc(p.note || '')}</textarea>
-        <div class="note-status" data-note-status="${p.id}">${p.noteAt ? `자동 저장됨 · ${stamp(p.noteAt)}` : '쓰는 대로 자동 저장돼요'}</div>
+        <textarea class="note-text" data-note="${p.id}" spellcheck="false">${esc(p.note || '')}</textarea>
+        <div class="note-status" data-note-status="${p.id}">${p.noteAt ? `자동 저장됨 · ${stamp(p.noteAt)}` : ''}</div>
       </div>`;
     } else if (tab === 'memo') {
       body = projectMemoBody(p);
@@ -642,57 +649,149 @@
   }
 
   // ── 홈 ──
+  // 홈 빠른 추가에서 쓸 프로젝트: 마지막으로 고른 것 → 이번 주 첫 탭 → 첫 프로젝트
+  const quickProject = () => (tmp.quickProject && getProject(tmp.quickProject) ? tmp.quickProject
+    : getDay(thisWeek())?.tabs[0]?.projectId || state.projects[0]?.id || '');
+
   function homeView() {
-    const td = thisWeek();
-    const ts = stats(dayTasks(td));
+    const tw = thisWeek();
+    const weekTasks = filterSort(dayTasks(tw).filter((t) => !t.carriedTo));
     const open = state.tasks.filter((t) => !t.done && !t.carriedTo);
     const overdue = state.tasks.filter(isOverdue);
-    const todayOpen = dayTasks(td).filter((t) => !t.done && !t.carriedTo);
-    const mini = (t) => `<div class="mini-task" data-action="goto-task" data-id="${t.id}">
-        ${priTag(t)}<span class="t">${esc(t.title)}</span>${dueTag(t)}<span class="from">${esc(projName(t.projectId))} · ${weekName(t.date)}</span></div>`;
-    const panel = (title, list, none) => `<div class="panel"><h2>${title}<span class="c">${list.length}</span></h2>
-        ${list.length ? list.slice(0, 8).map(mini).join('') : `<div class="none">${none}</div>`}</div>`;
+    const memos = weekMemos(tw);
+    const qp = quickProject();
+
+    // 체크박스까지 있는 한 줄 Task
+    const row = (t, { showWeek } = {}) => `<div class="hrow ${t.done ? 'done' : ''}">
+        <button class="hcheck" data-action="toggle-task" data-id="${t.id}" aria-label="완료 표시">${t.done ? '✓' : ''}</button>
+        <span class="ht" data-action="goto-task" data-id="${t.id}" title="이 주간으로 이동">${esc(t.title)}</span>
+        ${dueTag(t)}
+        <span class="hp"><i style="background:${projColor(t.projectId)}"></i>${esc(projName(t.projectId))}${showWeek ? ` · ${weekName(t.date)}` : ''}</span>
+      </div>`;
+    const list = (items, none, opts) => (items.length ? items.map((t) => row(t, opts)).join('') : `<div class="none">${none}</div>`);
     const d = new Date();
-    return `${mobileTop('홈')}
+
+    return `${mobileTop('Home')}
       <div class="page">
         <div class="home-top">
           <div><h1>안녕하세요, ${esc(userName())}님 👋</h1>
-          <div class="sub">${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 ${DOW[d.getDay()]}요일</div></div>
-          <button class="btn primary" data-action="start-today">${getDay(td) ? '이번 주 업무일지 열기 ›' : '+ 이번 주 업무일지 시작'}</button>
+          <div class="sub">${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 ${DOW[d.getDay()]}요일 · ${weekLabel(tw)}</div></div>
+          <button class="btn primary" data-action="start-today">${getDay(tw) ? '이번 주 업무일지 열기 ›' : '+ 이번 주 업무일지 시작'}</button>
         </div>
-        <div class="stat-grid">
-          <div class="stat"><div class="k">이번 주 Task</div><div class="v">${ts.done}<small> / ${ts.total}</small></div></div>
-          <div class="stat"><div class="k">전체 미완료</div><div class="v">${open.length}</div></div>
-          <div class="stat"><div class="k">마감 지남</div><div class="v ${overdue.length ? 'red' : ''}">${overdue.length}</div></div>
-          <div class="stat"><div class="k">프로젝트</div><div class="v">${state.projects.length}</div></div>
-        </div>
-        <div class="two-col">
-          ${panel('📌 이번 주 할 일', todayOpen, '이번 주 남은 Task가 없어요.')}
-          ${panel('📋 전체 미완료', open, '미완료 Task가 없어요.')}
-          ${panel('⚠ 마감 지남', overdue, '마감이 지난 Task가 없습니다.')}
-          <div class="panel"><h2>🗓 최근 주간 업무일지<span class="c">${Math.min(state.days.length, 7)}</span></h2>
-            ${state.days.slice(0, 7).map((dy) => {
-              const s = stats(dayTasks(dy.date));
-              return `<div class="mini-task" data-action="open-day" data-date="${dy.date}">
-                <span class="t"><b>${weekLabel(dy.date)}</b> <span class="dots">${dy.tabs.map((t) => `<i style="background:${projColor(t.projectId)}"></i>`).join('')}</span></span>
-                <span class="from">${s.done}/${s.total} 완료</span></div>`;
-            }).join('') || '<div class="none">아직 업무일지가 없어요.</div>'}
+
+        <div class="home-grid">
+          <div class="home-col">
+            <section class="hcard">
+              <h2>📌 이번 주 할 일<span class="c">${weekTasks.filter((t) => t.done).length}/${weekTasks.length}</span></h2>
+              <div class="hbox hlist">${list(weekTasks, '이번 주 할 일이 없어요.')}</div>
+              <form class="quick" data-quick="task" autocomplete="off">
+                <label class="proj-sel qsel" style="--pc:${projColor(qp)}" title="프로젝트 선택">
+                  <i></i>
+                  <select name="pid" data-quick-proj>
+                    ${state.projects.map((p) => `<option value="${p.id}" ${p.id === qp ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+                    <option value="__new" ${qp ? '' : 'selected'}>+ 새 프로젝트…</option>
+                  </select>
+                </label>
+                <input name="text" class="quick-input" placeholder="빠른 추가" maxlength="200">
+                <button class="quick-btn" title="추가 (Enter)">+</button>
+              </form>
+            </section>
+            <section class="hcard">
+              <h2>⚠ 마감 지남<span class="c">${overdue.length}</span></h2>
+              <div class="hbox hlist">${list(overdue, '마감이 지난 Task가 없어요.', { showWeek: true })}</div>
+            </section>
+          </div>
+          <div class="home-col">
+            <section class="hcard">
+              <h2>📝 메모<span class="c">${memos.length}</span></h2>
+              <div class="hbox hlist">${memos.length ? memos.map((m) => {
+                const lines = m.text.split('\n'), sub = lines.slice(1).join(' ').trim();
+                return `<div class="hmemo" data-action="open-memo-item" data-id="${m.id}" title="메모 탭으로 이동">
+                  <i style="background:${projColor(m.projectId)}"></i>
+                  <div class="hm-body"><div class="hm-title">${esc(memoTitle(m))}</div>${sub ? `<div class="hm-sub">${esc(sub)}</div>` : ''}</div>
+                  <span class="hm-date">${stamp(m.createdAt)}</span>
+                </div>`;
+              }).join('') : '<div class="none">이번 주 메모가 없어요.</div>'}</div>
+              <form class="quick" data-quick="memo" autocomplete="off">
+                <input name="text" class="quick-input" placeholder="빠른 메모" maxlength="500">
+                <button class="quick-btn" title="추가 (Enter)">+</button>
+              </form>
+            </section>
+            <section class="hcard">
+              <h2>📋 전체 미완료<span class="c">${open.length}</span></h2>
+              <div class="hbox hlist">${list(open, '미완료 Task가 없어요.', { showWeek: true })}</div>
+            </section>
           </div>
         </div>
-        <div class="section-title">프로젝트</div>
+
+        <div class="section-title">Projects</div>
         <div class="card-grid">
           ${state.projects.map((p) => {
-            const s = stats(projTasks(p.id));
+            const ps = stats(projTasks(p.id));
             const last = projTasks(p.id).map((t) => t.date).sort().pop();
             return `<div class="list-card" data-action="open-project" data-id="${p.id}">
               <div class="n"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</div>
               <div class="f">${last ? `최근 업무 ${weekLabel(last)}` : '아직 업무 없음'}</div>
-              <div class="bar"><span style="width:${s.pct}%"></span></div>
-              <div class="row"><span>${s.done}/${s.total} 완료</span><span>${s.pct}%</span></div>
+              <div class="bar"><span style="width:${ps.pct}%"></span></div>
+              <div class="row"><span>${ps.done}/${ps.total} 완료</span><span>${ps.pct}%</span></div>
             </div>`;
           }).join('') || '<div class="none" style="color:var(--muted)">프로젝트가 없습니다. 왼쪽 아래 <b>+ 프로젝트</b>로 만들어 보세요.</div>'}
         </div>
       </div>`;
+  }
+
+  // ── 📆 Monthly: 한 달 전체를 프로젝트별 세로 칸으로 ──
+  // 달 구분은 주차 이름 기준 (예: "11월 1주차"의 Task는 11월)
+  function monthlyView() {
+    const mk = state.ui.monthView || weekMonthKey(thisWeek());
+    const [y, m] = mk.split('-').map(Number);
+    const tasks = state.tasks.filter((t) => weekMonthKey(t.date) === mk);
+    const s = stats(tasks);
+    const pids = [...new Set(tasks.map((t) => t.projectId))]
+      .sort((a, b) => state.projects.findIndex((p) => p.id === a) - state.projects.findIndex((p) => p.id === b));
+    const card = (t) => {
+      const notes = t.notes.trim().split('\n').slice(0, 4).join('\n');
+      return `<div class="kcard ${t.done ? 'done' : ''}" data-action="goto-task" data-id="${t.id}" title="이 주간으로 이동">
+        <div class="kc-title">${esc(t.title)}</div>
+        <div class="kc-meta">
+          <span>${weekName(t.date)}</span>
+          ${t.due ? `<span class="${isOverdue(t) ? 'kc-over' : ''}">${isOverdue(t) ? '⚠ ' : ''}마감 ${short(t.due)}</span>` : ''}
+        </div>
+        ${notes ? `<div class="kc-notes">${renderNotes(notes)}</div>` : ''}
+        <div class="kc-foot">
+          ${t.done ? `<span class="tag done-tag">✓ 완료${t.doneAt ? ` · ${short(fmt(new Date(t.doneAt)))}` : ''}</span>`
+            : t.carriedTo ? `<span class="tag carry">→ ${weekName(t.carriedTo)}로 이월됨</span>`
+            : '<span class="tag kc-open">진행 중</span>'}
+        </div>
+      </div>`;
+    };
+    const order = (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.done - b.done));
+    const cols = pids.map((pid) => {
+      const list = tasks.filter((t) => t.projectId === pid).sort(order), cs = stats(list);
+      return `<div class="kcol" style="--pc:${projColor(pid)}">
+        <div class="kcol-head">
+          <span class="kpill" data-action="open-project" data-id="${pid}" title="프로젝트 열기"><i></i>${esc(projName(pid))}</span>
+          <span class="kcount">${cs.done}/${cs.total}</span>
+        </div>
+        ${list.map(card).join('')}
+      </div>`;
+    }).join('');
+    return `${mobileTop('Monthly')}
+      <div class="list-head">
+        <div class="list-title">
+          <button class="btn sm" data-action="month-move" data-d="-1">‹</button>
+          <h1>${MONTHS[m - 1]} ${y}</h1>
+          <button class="btn sm" data-action="month-move" data-d="1">›</button>
+          ${mk !== weekMonthKey(thisWeek()) ? '<button class="btn sm" data-action="month-move" data-d="0">이번 달</button>' : ''}
+          <span class="grow"></span>
+        </div>
+        <div class="head-progress solo">
+          <div class="bar"><span style="width:${s.pct}%"></span></div>
+          <div class="caption">${s.done} / ${s.total} 완료 · ${s.pct}% · 프로젝트 ${pids.length}개</div>
+        </div>
+      </div>
+      ${cols ? `<div class="kanban">${cols}</div>`
+        : `<div class="tasks">${emptyBox(`${MONTHS[m - 1]} ${y}에 작성한 Task가 없어요.`)}</div>`}`;
   }
 
   // ── 캘린더 ──
@@ -716,16 +815,16 @@
         ${evs.length > 3 ? `<div class="cal-more">+${evs.length - 3}개</div>` : ''}
       </div>`;
     }
-    return `${mobileTop('캘린더')}
+    return `${mobileTop('Calendar')}
       <div class="page">
         <div class="cal-head">
-          <h1>${y}년 ${m}월</h1>
+          <h1>${MONTHS[m - 1]} ${y}</h1>
           <button class="btn sm" data-action="cal-move" data-d="-1">‹</button>
           <button class="btn sm" data-action="cal-move" data-d="0">오늘</button>
           <button class="btn sm" data-action="cal-move" data-d="1">›</button>
         </div>
         <div class="cal">
-          <div class="cal-week">${DOW.map((d, i) => `<div class="cal-dow ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${d}</div>`).join('')}</div>
+          <div class="cal-week">${DOW_EN.map((d, i) => `<div class="cal-dow ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${d}</div>`).join('')}</div>
           <div class="cal-week">${cells}</div>
         </div>
         <div class="help" style="margin-top:10px">Task는 <b>마감일</b>에 표시돼요. 날짜 칸을 누르면 그 주의 업무일지로, Task를 누르면 해당 Task로 이동합니다.</div>
@@ -827,14 +926,13 @@
           <div class="proj-pick">${weekTabs.map((tb, i) => `<label><input type="radio" name="tabId" value="${tb.id}" ${i === 0 ? 'checked' : ''}>
             <span><i style="background:${projColor(tb.projectId)}"></i>${esc(projName(tb.projectId))}${tb.label ? ` · ${esc(tb.label)}` : ''}</span></label>`).join('')}</div>
         </div>` : ''}
-        <div class="field"><label>Task</label><input class="input" name="title" value="${esc(t.title)}" placeholder="예) 테스트 207 진행" autofocus autocomplete="off" required></div>
+        <div class="field"><label>Task</label><input class="input" name="title" value="${esc(t.title)}" autofocus autocomplete="off" required></div>
         <div class="row2">
           ${!task && ctx.askDate ? `<div class="field"><label>주 (날짜를 고르면 그 주로 들어가요)</label><input class="input" type="date" name="date" value="${today()}" required></div>` : ''}
           <div class="field"><label>마감일 (선택)</label><input class="input" type="date" name="due" value="${t.due || ''}"></div>
         </div>
         <div class="field"><label>비고</label>
-          <textarea name="notes" placeholder="진행 상황, 이슈, 담당자, 참고 링크 등을 자세히 적어주세요.">${esc(t.notes)}</textarea>
-          <div class="help">줄 앞에 <code>- </code> 를 쓰면 글머리표, <code>- [ ]</code> / <code>- [x]</code> 는 세부 체크 항목으로 보입니다. 링크는 자동으로 연결돼요.</div>
+          <textarea name="notes">${esc(t.notes)}</textarea>
         </div>
         <div class="modal-foot">
           ${task ? `<button type="button" class="btn danger" data-action="delete-task" data-id="${task.id}">삭제</button><span class="grow"></span>` : ''}
@@ -889,7 +987,7 @@
       if (p) Object.assign(p, { name, color: f.get('color') || p.color });
       else {
         const np = newProject(name); np.color = f.get('color') || np.color;
-        state.view = { type: 'project', projectId: np.id }; tmp.filter = 'all'; tmp.projTab = 'note';
+        state.view = { type: 'project', projectId: np.id }; tmp.filter = 'all'; tmp.projTab = 'task';
       }
       closeModal(); commit();
     };
@@ -1154,7 +1252,7 @@
     'open-day': (el) => openDay(el.dataset.date, el.dataset.project),
     'open-project': (el) => {
       if (state.view.projectId !== el.dataset.id) tmp.filter = 'all';
-      if (state.view.projectId !== el.dataset.id) tmp.projTab = 'note';
+      if (state.view.projectId !== el.dataset.id) tmp.projTab = 'task';
       state.view = { type: 'project', projectId: el.dataset.id }; tmp.editingNotes = null; commit(); closeSidebar();
     },
     'start-today': () => { ensureDay(thisWeek()); openDay(thisWeek()); },
@@ -1165,8 +1263,11 @@
     },
     'new-day': () => newDay(),
     'new-project': () => projectModal(),
+    // 사이드바 Projects 목록 접기/펼치기 (이 PC의 보기 설정이라 드라이브에는 올리지 않음)
+    'toggle-projects': () => { state.ui.projectsOpen = !state.ui.projectsOpen; saveLocal(); render(); },
     'go-memo': () => { const tw = thisWeek(); ensureDay(tw); tmp.activeTab[tw] = MEMO; openDay(tw); },
     'open-memo': (el) => { tmp.activeTab[el.dataset.date] = MEMO; openDay(el.dataset.date); },
+    'open-memo-item': (el) => { const m = findMemo(el.dataset.id); if (!m) return; tmp.activeTab[m.date] = MEMO; tmp.flash = m.id; openDay(m.date); },
     'proj-tab': (el) => { tmp.projTab = el.dataset.t; render(); },
     'add-memo': (el) => {
       const date = el.dataset.date || thisWeek();
@@ -1309,6 +1410,12 @@
       tmp.expandedNotes.has(id) ? tmp.expandedNotes.delete(id) : tmp.expandedNotes.add(id); render();
     },
     'goto-task': (el) => { const t = findTask(el.dataset.id); if (t) gotoTask(t); },
+    'month-move': (el) => {
+      const d = +el.dataset.d, cur = state.ui.monthView || weekMonthKey(thisWeek());
+      if (!d) state.ui.monthView = weekMonthKey(thisWeek());
+      else { const [y, m] = cur.split('-').map(Number); const n = new Date(y, m - 1 + d, 1); state.ui.monthView = `${n.getFullYear()}-${pad(n.getMonth() + 1)}`; }
+      saveLocal(); render();
+    },
     'cal-move': (el) => {
       const d = +el.dataset.d;
       if (!d) state.ui.calMonth = today().slice(0, 7);
@@ -1351,9 +1458,133 @@
   });
 
   // 비고 인라인 편집 — 입력 즉시 자동 저장
+  // ───────── 글쓰기 도우미: "/" 메뉴 · 체크박스 클릭 ─────────
+  const WRITE_AREAS = '.note-text, .memo-text, textarea[data-notes], #modal-root textarea';
+  const nowTime = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+  const SLASH_ITEMS = [
+    { icon: '🤍', label: '체크박스', keys: 'checkbox todo 체크 할일 하트', text: '🤍 ' },
+    { icon: '💗', label: '완료 체크', keys: 'done check 완료 하트', text: '💗 ' },
+    { icon: '•', label: '글머리표', keys: 'bullet list 목록 점', text: '• ' },
+    { icon: '1.', label: '번호 목록', keys: 'number 번호 숫자', text: '1. ' },
+    { icon: '📅', label: '오늘 날짜', keys: 'date today 날짜 오늘', text: () => `${today()} ` },
+    { icon: '🕐', label: '지금 시간', keys: 'time now 시간 지금', text: () => `${nowTime()} ` },
+    { icon: '✨', label: '추가', keys: 'add feat new 추가 기능', text: '✨ 추가: ' },
+    { icon: '🐛', label: '수정', keys: 'fix bug 수정 버그', text: '🐛 수정: ' },
+    { icon: '♻️', label: '변경', keys: 'change refactor update 변경', text: '♻️ 변경: ' },
+    { icon: '🗑', label: '삭제', keys: 'remove delete 삭제 제거', text: '🗑 삭제: ' },
+    { icon: '🔖', label: '버전', keys: 'version release 버전 릴리스 배포', text: '🔖 v' },
+    { icon: '⚠️', label: '주의', keys: 'warn warning 주의 이슈 경고', text: '⚠️ ' },
+    { icon: '📌', label: '중요', keys: 'pin important 중요', text: '📌 ' },
+    { icon: '💡', label: '아이디어', keys: 'idea tip 아이디어 참고 팁', text: '💡 ' },
+    { icon: '──', label: '구분선', keys: 'divider line hr 구분선 줄', text: '──────────────\n' },
+  ];
+  const slash = { ta: null, start: -1, items: [], sel: 0 };
+
+  // textarea 안 글자 위치의 화면 좌표 (같은 스타일의 보이지 않는 복제 상자로 계산)
+  function caretCoords(ta, pos, len = 1) {
+    const cs = getComputedStyle(ta);
+    const div = document.createElement('div');
+    ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+      'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'boxSizing', 'tabSize', 'wordBreak'].forEach((k) => { div.style[k] = cs[k]; });
+    Object.assign(div.style, { position: 'absolute', visibility: 'hidden', whiteSpace: 'pre-wrap', overflowWrap: 'break-word', width: ta.offsetWidth + 'px', top: '0', left: '-9999px' });
+    div.textContent = ta.value.slice(0, pos);
+    const span = document.createElement('span');
+    span.textContent = ta.value.slice(pos, pos + len) || '.';
+    div.appendChild(span);
+    document.body.appendChild(div);
+    const r = ta.getBoundingClientRect();
+    const z = ta.offsetWidth ? r.width / ta.offsetWidth : 1; // 화면 배율(zoom) 보정
+    const out = { left: r.left + (span.offsetLeft - ta.scrollLeft) * z, top: r.top + (span.offsetTop - ta.scrollTop) * z, width: span.offsetWidth * z, height: (parseFloat(cs.lineHeight) || 24) * z };
+    div.remove();
+    return out;
+  }
+
+  function closeSlash() { slash.ta = null; slash.start = -1; const el = $('#slash-menu'); if (el) el.remove(); }
+  function drawSlash() {
+    const q = slash.ta.value.slice(slash.start + 1, slash.ta.selectionStart).toLowerCase();
+    slash.items = SLASH_ITEMS.filter((it) => !q || it.label.toLowerCase().includes(q) || it.keys.includes(q));
+    if (!slash.items.length) return closeSlash();
+    slash.sel = Math.min(slash.sel, slash.items.length - 1);
+    let el = $('#slash-menu');
+    if (!el) { el = document.createElement('div'); el.id = 'slash-menu'; el.className = 'slash-menu'; document.body.appendChild(el); }
+    el.innerHTML = slash.items.map((it, i) => `<div class="slash-item ${i === slash.sel ? 'sel' : ''}" data-si="${i}"><span class="si-ic">${it.icon}</span>${esc(it.label)}</div>`).join('');
+    const c = caretCoords(slash.ta, slash.start);
+    const h = el.offsetHeight, w = el.offsetWidth;
+    el.style.left = Math.max(8, Math.min(c.left, innerWidth - w - 8)) + 'px';
+    el.style.top = (c.top + c.height + h + 8 > innerHeight ? c.top - h - 4 : c.top + c.height + 2) + 'px';
+    el.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
+  }
+  function pickSlash(i) {
+    const it = slash.items[i], ta = slash.ta;
+    if (!it || !ta) return closeSlash();
+    const text = typeof it.text === 'function' ? it.text() : it.text;
+    const start = slash.start, end = ta.selectionStart; // "/검색어" 부분을 고른 기호로 바꿈
+    closeSlash();
+    ta.focus();
+    ta.setRangeText(text, start, end, 'end');
+    ta.dispatchEvent(new Event('input', { bubbles: true })); // 기존 자동 저장 그대로
+  }
+
+  // "/" 입력 → 메뉴 열기, 이어서 치는 글자로 좁히기
+  document.addEventListener('input', (e) => {
+    const ta = e.target.closest?.(WRITE_AREAS); if (!ta) return;
+    const pos = ta.selectionStart, v = ta.value;
+    if (slash.ta === ta) {
+      const q = v.slice(slash.start + 1, pos);
+      if (pos <= slash.start || v[slash.start] !== '/' || /\s/.test(q) || q.length > 12) closeSlash(); else drawSlash();
+      return;
+    }
+    if (e.inputType === 'insertText' && e.data === '/' && (pos === 1 || /\s/.test(v[pos - 2]))) {
+      slash.ta = ta; slash.start = pos - 1; slash.sel = 0;
+      drawSlash();
+    }
+  });
+  // 메뉴가 열려 있을 때 ↑↓ Enter Tab Esc
+  document.addEventListener('keydown', (e) => {
+    if (!slash.ta || e.target !== slash.ta) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault(); e.stopImmediatePropagation();
+      slash.sel = (slash.sel + (e.key === 'ArrowDown' ? 1 : -1) + slash.items.length) % slash.items.length;
+      drawSlash();
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault(); e.stopImmediatePropagation(); pickSlash(slash.sel);
+    } else if (e.key === 'Escape') {
+      e.preventDefault(); e.stopImmediatePropagation(); closeSlash();
+    }
+  }, true);
+  // 마우스로 고르기 (textarea에서 포커스가 빠지지 않게 mousedown에서 처리)
+  document.addEventListener('mousedown', (e) => {
+    const item = e.target.closest('#slash-menu .slash-item');
+    if (item) { e.preventDefault(); pickSlash(+item.dataset.si); return; }
+    if (slash.ta && e.target !== slash.ta && !e.target.closest('#slash-menu')) closeSlash();
+  }, true);
+  document.addEventListener('scroll', () => { if (slash.ta) closeSlash(); }, true);
+
+  // 체크박스를 클릭하면 완료로: 🤍 ↔ 💗 (예전에 쓴 ☐ ↔ ☑ 도 그대로 동작)
+  const CHECK_PAIRS = [['🤍', '💗'], ['☐', '☑']];
+  document.addEventListener('click', (e) => {
+    const ta = e.target.closest?.(WRITE_AREAS); if (!ta || ta.selectionStart !== ta.selectionEnd) return;
+    const pos = ta.selectionStart, v = ta.value;
+    for (const [off, on] of CHECK_PAIRS) {
+      for (const sym of [off, on]) {
+        for (let i = pos - sym.length; i <= pos; i++) { // 커서가 기호 앞·뒤·가운데 어디에 있어도 찾기
+          if (i < 0 || v.slice(i, i + sym.length) !== sym) continue;
+          const c = caretCoords(ta, i, sym.length); // 실제로 그 기호 위를 눌렀는지 확인
+          if (e.clientX < c.left - 2 || e.clientX > c.left + c.width + 2 || e.clientY < c.top || e.clientY > c.top + c.height) continue;
+          const next = sym === off ? on : off;
+          ta.setRangeText(next, i, i + sym.length, 'preserve');
+          ta.setSelectionRange(i + next.length + 1, i + next.length + 1);
+          ta.dispatchEvent(new Event('input', { bubbles: true }));
+          return;
+        }
+      }
+    }
+  });
+
   // 프로젝트 노트 — 입력 즉시 자동 저장
   function autoGrowNote(ta) {
-    const min = Math.max(420, innerHeight - ta.getBoundingClientRect().top - 60);
+    const r = ta.getBoundingClientRect(), z = ta.offsetWidth ? r.width / ta.offsetWidth : 1;
+    const min = Math.max(420, (innerHeight - r.top - 60) / z);
     ta.style.height = 'auto'; ta.style.height = Math.max(min, ta.scrollHeight + 2) + 'px';
   }
   document.addEventListener('input', (e) => {
@@ -1385,6 +1616,42 @@
     }, 200);
   });
   // 메모 첫 줄 프로젝트 선택
+  // ── 홈 빠른 추가 (Enter) ──
+  document.addEventListener('submit', async (e) => {
+    const form = e.target.closest('form[data-quick]'); if (!form) return;
+    e.preventDefault();
+    const text = form.text.value.trim(); if (!text) return;
+    const tw = thisWeek();
+    if (form.dataset.quick === 'task') {
+      let pid = form.pid.value;
+      if (pid === '__new' || !getProject(pid)) {
+        const name = await askText('새 프로젝트', '', '프로젝트 이름');
+        if (!name) return;
+        pid = newProject(name).id;
+      }
+      tmp.quickProject = pid;
+      const tab = tabFor(tw, pid);
+      state.tasks.unshift({ id: uid(), date: tw, tabId: tab.id, projectId: pid, title: text, priority: 'normal', due: '', done: false, notes: '', createdAt: Date.now() });
+      tmp.focusQuick = 'task';
+      toast('이번 주 할 일에 추가했어요');
+    } else {
+      ensureDay(tw);
+      state.memos.unshift({ id: uid(), date: tw, projectId: defaultMemoProject(tw), text, createdAt: Date.now() });
+      tmp.focusQuick = 'memo';
+      toast('이번 주 메모에 추가했어요');
+    }
+    commit();
+  });
+  // 빠른 추가 프로젝트 선택 (+ 새 프로젝트)
+  document.addEventListener('change', async (e) => {
+    const sel = e.target.closest('select[data-quick-proj]'); if (!sel) return;
+    if (sel.value !== '__new') { tmp.quickProject = sel.value; sel.closest('.qsel').style.setProperty('--pc', projColor(sel.value)); return; }
+    const name = await askText('새 프로젝트', '', '프로젝트 이름');
+    if (!name) { render(); return; }
+    tmp.quickProject = newProject(name).id; tmp.focusQuick = 'task';
+    commit();
+  });
+
   document.addEventListener('change', async (e) => {
     const sel = e.target.closest('select[data-mproj]'); if (!sel) return;
     const m = findMemo(sel.dataset.mproj); if (!m) return;
@@ -1787,6 +2054,7 @@
   init();
   function init() {
     const migrated = state.__migrated; delete state.__migrated;
+    state.view = { type: 'home' }; // 사이트를 열면 항상 Home부터
     saveLocal();
     Sync.start();
     if (migrated) Sync.markDirty(); // 예전 구조에서 바뀐 데이터를 드라이브에도 반영
