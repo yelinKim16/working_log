@@ -190,13 +190,16 @@
   const tabTasks = (tabId) => state.tasks.filter((t) => t.tabId === tabId);
   const dayTasks = (date) => state.tasks.filter((t) => t.date === date);
   const projTasks = (pid) => state.tasks.filter((t) => t.projectId === pid);
-  const weekMemos = (date) => state.memos.filter((m) => m.date === date);
+  const isMeeting = (m) => m.kind === 'meeting';
+  const weekMemos = (date) => state.memos.filter((m) => m.date === date && !isMeeting(m));
+  const weekMeetings = (date) => state.memos.filter((m) => m.date === date && isMeeting(m));
   const projMemos = (pid) => state.memos.filter((m) => m.projectId === pid);
   const findMemo = (id) => state.memos.find((m) => m.id === id);
   const memoTitle = (m) => m.text.split('\n')[0].trim() || '(제목 없음)';
-  function newMemo(date, projectId) {
+  function newMemo(date, projectId, kind) {
     ensureDay(date);
     const m = { id: uid(), date, projectId: projectId || '', text: '', createdAt: Date.now() };
+    if (kind === 'meeting') m.kind = 'meeting';
     state.memos.unshift(m); // 새 메모는 맨 위에
     tmp.focusMemo = m.id;
     return m;
@@ -464,6 +467,7 @@
     return `<div class="memo" data-task="${m.id}">
       <div class="memo-head">
         ${memoProjectSelect(m)}
+        ${isMeeting(m) && state.view.type === 'project' ? '<span class="tag meet-tag">회의록</span>' : ''}
         <span class="memo-date">${stamp(m.createdAt)} 작성</span>
         <span class="grow"></span>
         <button class="memo-more" data-action="memo-menu" data-id="${m.id}" title="더보기">⋯</button>
@@ -480,15 +484,26 @@
       <div class="sheet">${memos.length ? memos.map(memoCard).join('')
         : emptyBox(`이 주의 메모가 아직 없어요.<br><br><button class="btn primary" data-action="add-memo" data-date="${date}">+ 새 메모</button>`)}</div>`;
   }
+  function meetingBody(date) {
+    const list = weekMeetings(date);
+    return `<div class="toolbar">
+        <span class="grow"></span>
+        <button class="btn primary" data-action="add-meeting" data-date="${date}">+ 새 회의록</button>
+      </div>
+      <div class="sheet">${list.length ? list.map(memoCard).join('')
+        : emptyBox(`이 주의 회의록이 아직 없어요.<br><br><button class="btn primary" data-action="add-meeting" data-date="${date}">+ 새 회의록</button>`)}</div>`;
+  }
   const emptyBox = (html) => `<div class="empty"><div class="big">📝</div>${html}</div>`;
 
   // ── 주간 화면 ──
   const ALL = '__all'; // "전체" 탭 — 그 주의 모든 탭 Task를 탭별로 묶어서 보여줌
   // 선택된 탭: 탭 객체, 전체 탭이면 ALL, 탭이 하나도 없으면 null
   const MEMO = '__memo'; // "메모" 탭
+  const MEETING = '__meeting'; // "회의록" 탭
   function activeTabOf(date) {
     const day = getDay(date);
     if (tmp.activeTab[date] === MEMO) return MEMO;
+    if (tmp.activeTab[date] === MEETING) return MEETING;
     if (!day || !day.tabs.length) return null;
     let id = tmp.activeTab[date] ?? ALL;
     if (id !== ALL && !day.tabs.some((t) => t.id === id)) id = ALL;
@@ -520,9 +535,11 @@
         <span class="tn">All</span><span class="tc">${s.done}/${s.total}</span></div>` : '';
     const memoTab = `<div class="dtab memo-tab ${tab === MEMO ? 'on' : ''}" data-action="select-tab" data-date="${date}" data-id="${MEMO}">
         <span class="tn">📝 Memo</span><span class="tc">${weekMemos(date).length}</span></div>`;
-    const tabs = allTab + memoTab + day.tabs.map((t) => {
+    const meetingTab = `<div class="dtab memo-tab ${tab === MEETING ? 'on' : ''}" data-action="select-tab" data-date="${date}" data-id="${MEETING}">
+        <span class="tn">🗒 회의록</span><span class="tc">${weekMeetings(date).length}</span></div>`;
+    const tabs = allTab + memoTab + meetingTab + day.tabs.map((t) => {
       const ts = stats(tabTasks(t.id));
-      return `<div class="dtab ${tab && tab !== ALL && tab !== MEMO && t.id === tab.id ? 'on' : ''}" data-action="select-tab" data-date="${date}" data-id="${t.id}">
+      return `<div class="dtab ${tab && tab !== ALL && tab !== MEMO && tab !== MEETING && t.id === tab.id ? 'on' : ''}" data-action="select-tab" data-date="${date}" data-id="${t.id}">
         <span class="dot" style="background:${projColor(t.projectId)}"></span>
         <span class="tn">${tabName(t)}</span>
         <span class="tc">${ts.done}/${ts.total}</span>
@@ -531,7 +548,9 @@
     }).join('');
 
     let body;
-    if (tab === MEMO) {
+    if (tab === MEETING) {
+      body = meetingBody(date);
+    } else if (tab === MEMO) {
       body = memoBody(date);
     } else if (!tab) {
       body = emptyBox(`이 주에 아직 탭이 없어요.<br><b>+ 탭 추가</b>로 프로젝트를 골라 업무를 적어보세요.<br><br>
@@ -1075,8 +1094,8 @@
           if (h.kind === 'project') return `<div class="${c}" data-i="${i}"><div class="rt">📁 ${hl(h.p.name, q)}</div><div class="rs">프로젝트 · Task ${projTasks(h.p.id).length}개</div></div>`;
           if (h.kind === 'memo') {
             const m = h.m, mi = m.text.toLowerCase().indexOf(q);
-            return `<div class="${c}" data-i="${i}"><div class="rt">📝 ${hl(memoTitle(m), q)}</div>
-              <div class="rs">메모 · ${esc(projName(m.projectId))} · ${weekLabel(m.date)} · ${hl(m.text.slice(Math.max(0, mi - 20), mi + 60).replace(/\n/g, ' '), q)}</div></div>`;
+            return `<div class="${c}" data-i="${i}"><div class="rt">${isMeeting(m) ? '🗒' : '📝'} ${hl(memoTitle(m), q)}</div>
+              <div class="rs">${isMeeting(m) ? '회의록' : '메모'} · ${esc(projName(m.projectId))} · ${weekLabel(m.date)} · ${hl(m.text.slice(Math.max(0, mi - 20), mi + 60).replace(/\n/g, ' '), q)}</div></div>`;
           }
           const t = h.t, ni = t.notes.toLowerCase().indexOf(q);
           const snippet = ni >= 0 ? hl(t.notes.slice(Math.max(0, ni - 20), ni + 60).replace(/\n/g, ' '), q) : '';
@@ -1089,7 +1108,7 @@
       if (!h) return;
       closeModal();
       if (h.kind === 'day') openDay(h.d.date);
-      else if (h.kind === 'memo') { tmp.activeTab[h.m.date] = MEMO; tmp.flash = h.m.id; openDay(h.m.date); }
+      else if (h.kind === 'memo') { tmp.activeTab[h.m.date] = isMeeting(h.m) ? MEETING : MEMO; tmp.flash = h.m.id; openDay(h.m.date); }
       else if (h.kind === 'project') { state.view = { type: 'project', projectId: h.p.id }; tmp.filter = 'all'; commit(); closeSidebar(); }
       else gotoTask(h.t);
     };
@@ -1224,6 +1243,7 @@
       const tab = activeTabOf(v.date);
       if (!tab) return actions['add-tab']({ dataset: { date: v.date } });
       if (tab === MEMO) { newMemo(v.date, defaultMemoProject(v.date)); return commit(); }
+      if (tab === MEETING) { newMemo(v.date, defaultMemoProject(v.date), 'meeting'); return commit(); }
       if (tab === ALL) return taskModal(null, { date: v.date, chooseTab: true });
       taskModal(null, { date: v.date, tabId: tab.id, projectId: tab.projectId });
     } else if (v.type === 'project') {
@@ -1256,6 +1276,11 @@
     'open-memo': (el) => { tmp.activeTab[el.dataset.date] = MEMO; openDay(el.dataset.date); },
     'open-memo-item': (el) => { const m = findMemo(el.dataset.id); if (!m) return; tmp.activeTab[m.date] = MEMO; tmp.flash = m.id; openDay(m.date); },
     'proj-tab': (el) => { tmp.projTab = el.dataset.t; render(); },
+    'add-meeting': (el) => {
+      const date = el.dataset.date || thisWeek();
+      newMemo(date, el.dataset.project || defaultMemoProject(date), 'meeting');
+      commit();
+    },
     'add-memo': (el) => {
       const date = el.dataset.date || thisWeek();
       newMemo(date, el.dataset.project || defaultMemoProject(date));
@@ -1269,7 +1294,7 @@
           if (nd === m.date) return;
           ensureDay(nd); m.date = nd; commit(); toast(`${weekName(nd)}로 옮겼어요`);
         } },
-        ...(state.view.type !== 'day' ? [{ label: '🗓 이 메모의 주로 이동', fn: () => { tmp.activeTab[m.date] = MEMO; tmp.flash = m.id; openDay(m.date); } }] : []),
+        ...(state.view.type !== 'day' ? [{ label: '🗓 이 메모의 주로 이동', fn: () => { tmp.activeTab[m.date] = isMeeting(m) ? MEETING : MEMO; tmp.flash = m.id; openDay(m.date); } }] : []),
         '-',
         { label: '🗑 메모 삭제', danger: true, fn: async () => {
           if (m.text.trim() && !(await confirmDlg(`<b>${esc(memoTitle(m))}</b> 메모를 삭제할까요?`))) return;

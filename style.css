@@ -833,3 +833,6 @@ kbd {
 
 /* 홈: 왼쪽(할 일 → 마감 지남) · 오른쪽(메모 → 전체 미완료) */
 .home-col { display: flex; flex-direction: column; gap: 26px; min-width: 0; }
+
+/* 회의록 */
+.tag.meet-tag { background: #eef2fb; color: #6f86b8; font-weight: 700; }
