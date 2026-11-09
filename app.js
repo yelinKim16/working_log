@@ -193,7 +193,7 @@
   const isMeeting = (m) => m.kind === 'meeting';
   const weekMemos = (date) => state.memos.filter((m) => m.date === date && !isMeeting(m));
   const weekMeetings = (date) => state.memos.filter((m) => m.date === date && isMeeting(m));
-  const projMemos = (pid) => state.memos.filter((m) => m.projectId === pid);
+  const projMemos = (pid) => state.memos.filter((m) => m.projectId === pid && !isMeeting(m)); // 회의록은 프로젝트 구분 없음
   const findMemo = (id) => state.memos.find((m) => m.id === id);
   const memoTitle = (m) => m.text.split('\n')[0].trim() || '(제목 없음)';
   function newMemo(date, projectId, kind) {
@@ -466,7 +466,7 @@
   function memoCard(m) {
     return `<div class="memo" data-task="${m.id}">
       <div class="memo-head">
-        ${memoProjectSelect(m)}
+        ${isMeeting(m) ? '' : memoProjectSelect(m)}
         ${isMeeting(m) && state.view.type === 'project' ? '<span class="tag meet-tag">회의록</span>' : ''}
         <span class="memo-date">${stamp(m.createdAt)} 작성</span>
         <span class="grow"></span>
@@ -1244,7 +1244,7 @@
       const tab = activeTabOf(v.date);
       if (!tab) return actions['add-tab']({ dataset: { date: v.date } });
       if (tab === MEMO) { newMemo(v.date, defaultMemoProject(v.date)); return commit(); }
-      if (tab === MEETING) { newMemo(v.date, defaultMemoProject(v.date), 'meeting'); return commit(); }
+      if (tab === MEETING) { newMemo(v.date, '', 'meeting'); return commit(); }
       if (tab === ALL) return taskModal(null, { date: v.date, chooseTab: true });
       taskModal(null, { date: v.date, tabId: tab.id, projectId: tab.projectId });
     } else if (v.type === 'project') {
@@ -1279,7 +1279,7 @@
     'proj-tab': (el) => { tmp.projTab = el.dataset.t; render(); },
     'add-meeting': (el) => {
       const date = el.dataset.date || thisWeek();
-      newMemo(date, el.dataset.project || defaultMemoProject(date), 'meeting');
+      newMemo(date, '', 'meeting');
       commit();
     },
     'add-memo': (el) => {
