@@ -724,19 +724,6 @@
           </div>
         </div>
 
-        <div class="section-title">Projects</div>
-        <div class="card-grid">
-          ${state.projects.map((p) => {
-            const ps = stats(projTasks(p.id));
-            const last = projTasks(p.id).map((t) => t.date).sort().pop();
-            return `<div class="list-card" data-action="open-project" data-id="${p.id}">
-              <div class="n"><span class="dot" style="background:${p.color}"></span>${esc(p.name)}</div>
-              <div class="f">${last ? `최근 업무 ${weekLabel(last)}` : '아직 업무 없음'}</div>
-              <div class="bar"><span style="width:${ps.pct}%"></span></div>
-              <div class="row"><span>${ps.done}/${ps.total} 완료</span><span>${ps.pct}%</span></div>
-            </div>`;
-          }).join('') || '<div class="none" style="color:var(--muted)">프로젝트가 없습니다. 왼쪽 아래 <b>+ 프로젝트</b>로 만들어 보세요.</div>'}
-        </div>
       </div>`;
   }
 
