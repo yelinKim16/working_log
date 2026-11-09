@@ -534,10 +534,11 @@
     const allTab = day.tabs.length ? `<div class="dtab all ${tab === ALL ? 'on' : ''}" data-action="select-tab" data-date="${date}" data-id="${ALL}">
         <span class="tn">All</span><span class="tc">${s.done}/${s.total}</span></div>` : '';
     const memoTab = `<div class="dtab memo-tab ${tab === MEMO ? 'on' : ''}" data-action="select-tab" data-date="${date}" data-id="${MEMO}">
-        <span class="tn">📝 Memo</span><span class="tc">${weekMemos(date).length}</span></div>`;
+        <span class="tn">Memo</span><span class="tc">${weekMemos(date).length}</span></div>`;
     const meetingTab = `<div class="dtab memo-tab ${tab === MEETING ? 'on' : ''}" data-action="select-tab" data-date="${date}" data-id="${MEETING}">
-        <span class="tn">🗒 회의록</span><span class="tc">${weekMeetings(date).length}</span></div>`;
-    const tabs = allTab + memoTab + meetingTab + day.tabs.map((t) => {
+        <span class="tn">📝 회의록</span><span class="tc">${weekMeetings(date).length}</span></div>`;
+    // 회의록을 맨 앞에. Memo 탭은 숨김 (사이드바 Memo로 들어왔을 때만 보임)
+    const tabs = meetingTab + allTab + (tab === MEMO ? memoTab : '') + day.tabs.map((t) => {
       const ts = stats(tabTasks(t.id));
       return `<div class="dtab ${tab && tab !== ALL && tab !== MEMO && tab !== MEETING && t.id === tab.id ? 'on' : ''}" data-action="select-tab" data-date="${date}" data-id="${t.id}">
         <span class="dot" style="background:${projColor(t.projectId)}"></span>
@@ -1094,7 +1095,7 @@
           if (h.kind === 'project') return `<div class="${c}" data-i="${i}"><div class="rt">📁 ${hl(h.p.name, q)}</div><div class="rs">프로젝트 · Task ${projTasks(h.p.id).length}개</div></div>`;
           if (h.kind === 'memo') {
             const m = h.m, mi = m.text.toLowerCase().indexOf(q);
-            return `<div class="${c}" data-i="${i}"><div class="rt">${isMeeting(m) ? '🗒' : '📝'} ${hl(memoTitle(m), q)}</div>
+            return `<div class="${c}" data-i="${i}"><div class="rt">${isMeeting(m) ? '📝' : '🗒'} ${hl(memoTitle(m), q)}</div>
               <div class="rs">${isMeeting(m) ? '회의록' : '메모'} · ${esc(projName(m.projectId))} · ${weekLabel(m.date)} · ${hl(m.text.slice(Math.max(0, mi - 20), mi + 60).replace(/\n/g, ' '), q)}</div></div>`;
           }
           const t = h.t, ni = t.notes.toLowerCase().indexOf(q);
